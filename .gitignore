@@ -1,0 +1,7 @@
+/DATA/model
+/decomposition
+/*.DS_Store
+/*/.DS_Store
+/Makefile
+/FBL_INV
+/Src/*.o

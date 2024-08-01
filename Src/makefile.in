@@ -1,0 +1,20 @@
+
+src_dir=Src/
+
+
+all: FBL_INV
+
+SRC := $(wildcard $(src_dir)*.c)
+OBJS := $(SRC:.c=.o)
+
+%.o: %.c
+	$(CMP) $(CFLAGS) $@ $< 
+
+FBL_INV: $(OBJS)
+	$(CMP) -o FBL_INV $(OBJS) -L. $(LFLAGS)  -lm
+
+.PHONY:clean
+
+clean:
+	find . -maxdepth 2 -name "*.o" -delete 
+	find . -maxdepth 2 -name "FBL_INV" -delete 

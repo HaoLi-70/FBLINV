@@ -1,0 +1,89 @@
+
+#Input file for the line polarization (off limb and optical thin).
+
+verbose = 0
+#verbose = YES
+
+#Mode 0 
+Mode = INVERSION
+
+#Mode 1
+#Mode = FORWARD
+
+#Mode 2
+#Mode = SINGLE_GRID
+
+#Mode 3
+#Mode = SINGLE_PXILE
+
+#Mode 4
+#Mode = DECOMPOSITION
+
+#Mode 5
+#Mode = RECONSTRUCTION
+
+atom_path = ../DATA/FEXIII_2L.atoms
+#atom_path = ../DATA/FEXIV_2L.atoms
+
+
+#rmax = 2.272110
+rmax = 3.0
+
+rmin = 1.05
+
+Ysize = 101
+Zsize = 101
+
+
+
+path_zero = ../DATA/zero_dri
+
+
+Bessel_function_N = 30 30 30 30
+
+harmonic_L = 30 30 30 30
+
+#sparsity = 0.1 0.1 0.1 0.1
+sparsity = 1.0 1.0 1.0 1.0 
+#sparsity = 6.0 6.0 6.0 6.0
+
+
+saturated = YES
+#saturated = No
+
+#Thomson_scattering = 10747, None
+
+
+FOV = -2.0, 2.0, -2.0, 2.0
+
+deltax = 0.1
+
+observation = ../Obs/obs
+path_coeff = ../Obs/sfb_coeff
+
+output = ./res
+
+
+Step_size = 3e8
+
+Weights = 1.0, 2.0, 2.0, 5.0, 8.0
+
+
+atmosphere_model = ../DATA/cr2130lg
+
+Kmax = 2
+
+Kdelta = 2
+
+coordinate = 1.2, 1.1, 1.0
+
+
+inv_flag = NO NO YES YES
+
+Ncut = 30
+
+Lcut = 30
+
+Bpotential = No
+
+Niter = 0
