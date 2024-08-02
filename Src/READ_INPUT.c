@@ -458,17 +458,21 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
 
     indx = 36;
     Input->rint = atof(Keywords[indx].line);
+    Input->rsqint = Input->rint*Input->rint;
     if(Input->Verbose >= 1 && Mpi->rank == 0){
       if(Input->rint<Input->rmax){
         Input->rint = Input->rmax;
         fprintf(stderr, "\n rIntegration is set to rmax \n");
       }
-      Input->rsqint = Input->rint*Input->rint;
+     
       fprintf(stderr, "\n Max radius for integration : %e Rs \n", \
           Input->rint); 
     }
 
-    fprintf(stderr, "\n\n ---------------------------------------- \n\n");
+    if(Mpi->rank == 0){
+      fprintf(stderr, "\n\n ------------------" \
+          "---------------------- \n\n");
+    }
 
     return 0;
 }
