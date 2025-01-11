@@ -4,13 +4,12 @@
 
 /*----------------------------------------------------------------------------*/
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
 #include "ALLOCATION.h"
 #include "ERROR.h"
 #include "MEMOR.h"
 
+/*----------------------------------------------------------------------------*/
 
 typedef struct Struct_Factor_Sign{
 
@@ -34,4 +33,4 @@ extern int FREE_FCTSG(STR_FCTSG *fctsg);
 
 /*----------------------------------------------------------------------------*/
 
-#endif /* ERROR_h */
+#endif /* FCTSG_h */

@@ -1449,7 +1449,7 @@ extern double Xvalue(double x, int N){
     ######################################################################*/  
 
     double X0, Y0, tmpx, tmpy, *xx;
-    int in;
+    int in = 0;
     double Sr = sin(x);
     double Cs = cos(x);
 

@@ -6,8 +6,9 @@
     /*######################################################################
      
       revision log:
+
         17 Aug. 2023.
-                    - fix a typo in WIGNER_3J
+           --- bugfix: fix a typo in WIGNER_3J
 
      
     ######################################################################*/
@@ -25,8 +26,8 @@ static int ISINTEGER(double val) {
 */
 /*----------------------------------------------------------------------------*/
 
-extern double WIGNER_3J(double J1, double J2, double J3, double M1, double M2, \
-    double M3, STR_FCTSG *fctsg){
+extern double WIGNER_3J(double J1, double J2, double J3, double M1, \
+    double M2, double M3, STR_FCTSG *fctsg){
     
     /*######################################################################
       Purpose:
@@ -89,8 +90,8 @@ extern double WIGNER_3J(double J1, double J2, double J3, double M1, double M2, \
     c = fctsg->fct[IG]*fctsg->fct[lround(J1-J2+J3)] \
         *fctsg->fct[lround(-J1+J2+J3)]/fctsg->fct[lround(J1+J2+J3+1)];
     d = fctsg->fct[lround(J1+M1)]*fctsg->fct[IC] \
-        *fctsg->fct[IH]*fctsg->fct[lround(J2-M2)]*fctsg->fct[lround(J3+M3)] \
-        *fctsg->fct[lround(J3-M3)];
+        *fctsg->fct[IH]*fctsg->fct[lround(J2-M2)] \
+        *fctsg->fct[lround(J3+M3)]*fctsg->fct[lround(J3-M3)];
 
     for(t=t1; t<=t2; t++){
       e += fctsg->sg[t]/(fctsg->fct[t]*fctsg->fct[IG-t] \
@@ -109,8 +110,8 @@ extern double WIGNER_3J(double J1, double J2, double J3, double M1, double M2, \
 
 /*----------------------------------------------------------------------------*/
 
-extern double WIGNER_6J(double J1, double J2, double J3, double J4, double J5, \
-    double J6, STR_FCTSG *fctsg){
+extern double WIGNER_6J(double J1, double J2, double J3, double J4, \
+    double J5, double J6, STR_FCTSG *fctsg){
     
     /*######################################################################
       Purpose:
@@ -197,8 +198,9 @@ extern double WIGNER_6J(double J1, double J2, double J3, double J4, double J5, \
 
 /*----------------------------------------------------------------------------*/
 
-extern double WIGNER_9J(double J1, double J2, double J3, double J4, double J5, \
-    double J6, double J7, double J8, double J9, STR_FCTSG *fctsg){
+extern double WIGNER_9J(double J1, double J2, double J3, double J4, \
+    double J5, double J6, double J7, double J8, double J9, \
+    STR_FCTSG *fctsg){
     
     /*######################################################################
       Purpose:
@@ -273,8 +275,8 @@ extern double WIGNER_9J(double J1, double J2, double J3, double J4, double J5, \
     val *= fctsg->sg[t1];
 
     if(fctsg->memo){
-      inster_9d(fctsg->J9, val, indx1, indx2, indx3, indx4, indx5, indx6, \
-          indx7, indx8, indx9);
+      inster_9d(fctsg->J9, val, indx1, indx2, indx3, indx4, indx5, \
+          indx6, indx7, indx8, indx9);
     }
     
     return val;

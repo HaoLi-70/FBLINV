@@ -14,17 +14,9 @@
 #include "FCTSG.h"
 #include "WIGNER.h"
 #include "READ_ATOM.h"
-
-
-
-/*----------------------------------------------------------------------------*/
-
-#define tiny 1e-10
+#include "READ_INPUT.h"
 
 /*----------------------------------------------------------------------------*/
-
-extern int Transition_Rates(STRUCT_ATOM *Atom, STR_FCTSG *fctsg, \
-    STRUCT_INPUT *Input);
     
 extern complex double **SEE(STRUCT_ATOM *Atom, STR_FCTSG *fctsg, \
     STRUCT_PARA *Para, STRUCT_INPUT *Input);

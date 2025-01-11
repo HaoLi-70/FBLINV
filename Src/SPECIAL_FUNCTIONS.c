@@ -6,6 +6,7 @@
     /*######################################################################
      
       revision log:
+
         19 Aug. 2023.
      
     ######################################################################*/
@@ -597,8 +598,24 @@ extern int Compute_SB_Zeros(double **Zeros, int Zero_L, int Zero_N, \
 
 /*----------------------------------------------------------------------------*/
 
-
 extern int cisi(double x, double *ci, double *si){
+
+    /*######################################################################
+      Purpose:
+        Computes the cosine and sine integrals Ci(x) and Si(x). Ci(0) is 
+        returned as a large negative number and no error message is 
+        generated. For x < 0 the routine returns Ci(−x) and you must 
+        supply the −iπ yourself.
+      Record of revisions:
+        19 Aug. 2023.
+      Input parameters:
+        x, The x value.
+      Output parameters:
+        ci, The Ci(x)
+        si, The Si(x)
+      Reference:
+        numerical recipes in C 2ed P258.
+    ######################################################################*/
 
     double EPS = 6.0e-8;
     double EULER = 0.57721566; 
@@ -674,3 +691,5 @@ extern int cisi(double x, double *ci, double *si){
     return 0;
 
 }
+
+/*----------------------------------------------------------------------------*/

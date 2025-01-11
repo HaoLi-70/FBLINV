@@ -4,17 +4,15 @@
 
 /*----------------------------------------------------------------------------*/
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdbool.h>
 #include <complex.h>
-#include "STR.h"
 #include "ALLOCATION.h"
-#include "SFB_TRANSFORM.h"
-#include "MPI_CONTROL.h"
-#include "ERROR.h"
 #include "CONSTANT.h"
+#include "ERROR.h"
 #include "LL04.h"
+#include "MPI_CTRL.h"
+#include "SPECIAL_FUNCTIONS.h"
+#include "STR.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -34,18 +32,44 @@ typedef struct Struct_Keywords{
 // lines
 typedef struct Struct_Stokes_grid{
 
-    double Stk[4], Stksav[4];
+    double Stk[4];
 
 }STRUCT_STOKES_GRID;
 
 // Thomson scattering
 typedef struct Struct_Thomson_Grid{
 
-    //double wavelength;
-    double Kr, Kt;
-    double val[2], valsav[2];
+    double val[2];
 
 }STRUCT_THOMSON_GRID;
+
+// model parameter strucure
+typedef struct Struct_Parameter{
+
+    // temperature, hydrogen density, electron density, 
+    double T, ne, nH;
+
+    // strength, inclination, azimuth 
+    double B, ThetaB, PhiB;
+
+    // three components of the magnetic field vector.
+    double Br, Bt, Bp;
+
+    double *Ion;
+
+}STRUCT_PARA;
+
+// viewing direction
+typedef struct Struct_Viewing{
+
+    STRUCT_STOKES_GRID *Line, *Line_unperturb;
+    STRUCT_THOMSON_GRID *Thom, *Thom_unperturb;
+    STRUCT_PARA Para, *Para_unperturb;
+
+    // velocity and field strength along los direction.
+    double Vlos, Blos;
+
+}STRUCT_LOS;
 
 // incidenct radiation tensor
 typedef struct Struct_Incident_grid{
@@ -55,37 +79,13 @@ typedef struct Struct_Incident_grid{
 
 }STRUCT_INCIDENT_GRID;
 
-// magnetic field structure (local vertical coordinate)
-typedef struct Struct_Field{
-
-    // strength, inclination, azimuth 
-    double B, ThetaB, PhiB;
-
-    // three components of the magnetic field vector.
-    double Br, Bt, Bp;
-
-}STRUCT_MAG;
-
-// model parameter strucure
-typedef struct Struct_Parameter{
-
-    // temperature, hydrogen density, electron density, 
-    // velocity along x direction.
-    double T, Tsav, ne, nesav, nH, nHsav, Vx, Bx;
-
-    // magnetic field
-    STRUCT_MAG Mag, Magsav;
-
-    double *Ion, *Ionsav;
-
-}STRUCT_PARA;
-
+// grids
 typedef struct Struct_Model_Grid{
 
-    STRUCT_STOKES_GRID *Line;
-    STRUCT_THOMSON_GRID *Thom;
+    STRUCT_LOS *los;
     STRUCT_INCIDENT_GRID *Jkq;
-    STRUCT_PARA Para;
+
+    double *Kr, *Kt;
 
     // coordinate
     double R, Theta, Phi, Rsq0;
@@ -181,7 +181,7 @@ typedef struct Struct_Input{
     //Path to the files
     char Path_Zero[Max_Line_Length], Path_Output[Max_Line_Length], \
       Path_Observation[Max_Line_Length], Path_Atmo[Max_Line_Length], \
-      Path_coeff[Max_Line_Length];
+      Path_coeff[Max_Line_Length], Path_Para[Max_Line_Length];
 
     char **Path_Atom; 
 
@@ -211,6 +211,8 @@ typedef struct Struct_Input{
 
     //field of view, field of view (spectrum);
     double FOV[2][2], FOVSPEC[2][2];
+
+    int FOVSPECINDX[2][2];
     
     //delta x, y, z
     double dx, dy, dz;
@@ -258,9 +260,22 @@ typedef struct Struct_Input{
     STRUCT_SPEC *Spec;
 
     // output V image
-    bool OutputV;
+    bool OutputV, OutputPara;
+
+    // number of viewing directions
+    int nlos;
+
+    // view directions (azimuth in degree)
+    double *los;
 
     int Nstk;
+
+    int **nx;
+
+    // input magnetic field vector;
+    double Bvec[3];
+
+    bool Binput;
 
 }STRUCT_INPUT;
 
@@ -396,16 +411,23 @@ typedef struct Struct_Atom{
 
 /*----------------------------------------------------------------------------*/
 
+typedef struct Struct_Output_LOS{
+
+    // synthesis for the viewing direction
+    double **syn, **spec;
+
+}STRUCT_OUTLOS;
+
+
 typedef struct Struct_Output{
 
-    // synthesis and perturb
-    double **synloc, **syntot;
+    STRUCT_OUTLOS *los;
+
+    // synthesis
+    double **synloc, **specloc;
 
     // radius, norm
     double *R, *norm;
-
-    // Spectrum
-    double **specloc, **spectot;
 
 }STRUCT_OUT;
 
@@ -428,8 +450,6 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
 
 extern int RDINPUT(char Filename[], STRUCT_INPUT *Input, \
     STRUCT_MPI *Mpi);
-
-extern int FREE_INPUT(STRUCT_INPUT *Input);
 
 /*----------------------------------------------------------------------------*/
 

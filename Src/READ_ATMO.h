@@ -7,8 +7,9 @@
 #include <stdio.h>
 #include "CONSTANT.h"
 #include "READ_INPUT.h"
-#include "LL04.h"
-#include "STR.h"
+#include "READ_ATMO.h"
+//#include "LL04.h"
+//#include "STR.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -40,10 +41,6 @@ typedef struct Struct_atmosphere{
 /*----------------------------------------------------------------------------*/
 
 extern void READ_ATMO(char *Filename, STRUCT_ATMO *Atmo);
-
-extern void WRITE_ATMO(char *Filename, STRUCT_ATMO *Atmo);
-
-extern void FREE_MODEL(STRUCT_ATMO *Atmo);
 
 /*----------------------------------------------------------------------------*/
 

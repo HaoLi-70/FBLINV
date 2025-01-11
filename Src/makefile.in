@@ -1,13 +1,14 @@
 
 src_dir=Src/
+obj_dir=Objs/
 
 
 all: FBL_INV
 
 SRC := $(wildcard $(src_dir)*.c)
-OBJS := $(SRC:.c=.o)
+OBJS := $(SRC:$(src_dir)%.c=$(obj_dir)%.o)
 
-%.o: %.c
+$(obj_dir)%.o: $(src_dir)%.c
 	$(CMP) $(CFLAGS) $@ $< 
 
 FBL_INV: $(OBJS)

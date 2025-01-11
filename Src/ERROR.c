@@ -32,14 +32,14 @@ extern int Error(enum error_level error_lv, const char *routine_name,\
 
     switch (error_lv) { 
       case enum_error:
-        fprintf(stderr, "\n-ERROR in routine %s\n %s\n", \
-            routine_name, (message_str) ? message_str : " (Undocumented)\n");
+        fprintf(stderr, "\n\n-ERROR in routine %s\n %s\n", \
+            routine_name, (message_str) ? message_str : " (Undocumented)\n\n");
         MPI_Finalize();
         exit(0);
         return 0;
       case enum_warning:
-        fprintf(stderr, "\n-WARNING in routine %s\n %s\n", routine_name, \
-            (message_str) ? message_str : " (Undocumented)\n");
+        fprintf(stderr, "\n\n-WARNING in routine %s\n %s\n", routine_name, \
+            (message_str) ? message_str : " (Undocumented)\n\n");
           return 0;
       default:
         return 1;

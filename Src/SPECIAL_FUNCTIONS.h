@@ -4,13 +4,11 @@
 
 /*----------------------------------------------------------------------------*/
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
 #include <complex.h>
 #include "ALLOCATION.h"
-#include "FCTSG.h"
 #include "CONSTANT.h"
+#include "FCTSG.h"
 
 /*----------------------------------------------------------------------------*/
 

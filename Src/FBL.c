@@ -14,6 +14,9 @@
 #include "READ_ATMO.h"
 #include "READ_ATOM.h"
 #include "READ_INPUT.h"
+#include "TRATE.h"
+
+
 #include "FCTSG.h"
 
 #include "TIME_PRINT.h"
@@ -23,6 +26,8 @@
 #include "IO.h"
 #include "ERROR.h"
 #include "FISTA.h"
+#include "FREE.h"
+#include "INTERPOL.h"
 
 #define Path_Input "./input.inv"
 
@@ -76,7 +81,6 @@ int main(int argc, char *argv[]){
     }
 
     RDINPUT(Path, Input, Mpi);
-
     int iatom, ipara;
 
     if(Input->Mode<4){
@@ -87,9 +91,11 @@ int main(int argc, char *argv[]){
       STRUCT_SYN *Syn = (STRUCT_SYN *)malloc(sizeof(STRUCT_SYN));
       STRUCT_OUT *Output = (STRUCT_OUT *)malloc(sizeof(STRUCT_OUT));
       STRUCT_ATMO *Atmo = (STRUCT_ATMO *)malloc(sizeof(STRUCT_ATMO));
-
       READ_ATMO(Input->Path_Atmo, Atmo);
-      
+
+      MPI_Barrier(MPI_COMM_WORLD);
+      if(Mpi->rank == 0) fprintf(stderr, " Atmosphere model read \n");
+
       for(iatom = 0; iatom < Input->Natom; iatom++){
         RDATOM(Input->Path_Atom[iatom], Input, Atom+iatom);
       }
@@ -114,7 +120,7 @@ int main(int argc, char *argv[]){
           if(Atom[iatom].TwoLv) continue;
           if(Mpi->rank == 0) fprintf(stderr, " computing rates for "\
               "atom %d \n", iatom);
-          Transition_Rates(Atom+iatom, fctsg, Input);
+          TRates(Atom+iatom, fctsg, Input);
         }
 
         Get_Para(Atmo, Atom, Syn, Input, Mpi);
@@ -135,13 +141,15 @@ int main(int argc, char *argv[]){
 
         Init(Input, Atom, Syn, fctsg, Output, Mpi);
 
+        
+
         if(Mpi->rank == 0) fprintf(stderr, " Initalized \n");
 
         for(iatom = 0; iatom < Input->Natom; iatom++){
           if(Atom[iatom].TwoLv) continue;
           if(Mpi->rank == 0) fprintf(stderr, " computing rates for "\
               "atom %d \n", iatom);
-          Transition_Rates(Atom+iatom, fctsg, Input);
+          TRates(Atom+iatom, fctsg, Input);
         }
 
         Get_Para(Atmo, Atom, Syn, Input, Mpi);
@@ -149,26 +157,33 @@ int main(int argc, char *argv[]){
 
         FREE_MODEL(Atmo);
 
+
+//    MPI_Finalize();
+//    return 0;
         if(Mpi->rank == 0) fprintf(stderr, " model freed \n");
+
         FORWARD(Syn, Atom, Input, fctsg, Mpi, false);
 
         if(Mpi->rank == 0) fprintf(stderr, " synthesis finished \n");
+
 
         Grid2Pixel(Syn, Atom, Input, Output, Mpi);
 
         if(Mpi->rank == 0) WRITE_SYNTHESIS(Input->Path_Output, Input, \
             Atom, Output, Syn);
 
-        if(Mpi->rank == 0) fprintf(stderr," synthesis write \n");
+        if(Mpi->rank == 0) fprintf(stderr," synthesis written \n");
+
+
+        if(Input->OutputPara) WRITE_PARA(Input, Syn, Atom, Mpi);
 
       }
 
-/*
       FREE_FCTSG(fctsg);
       FREE_GRIDS(Input, Syn, Mpi);
-      FREE_OUTPUT(Output, Input->Mode);
+      FREE_OUTPUT(Output, Input);
       FREE_ATOM(Atom, Input->Natom);
-*/
+
     }else{
 
       if(Mpi->rank == 0){
@@ -231,7 +246,7 @@ int main(int argc, char *argv[]){
             SFBde(Model, Order, Input->Zeros, Input->inner_flag, \
                 Input->BC, Input->Para[ipara].Coeff);
   
-            //SFB_DECOMP(Model, Order, Input->Zeros, Input->inner_flag, \
+            //SFB_DECOMP(Model, Order, Input->Zeros, Input->inner_flag, 
             //    Input->BC, Input->Para[ipara].Coeff);
 
           }

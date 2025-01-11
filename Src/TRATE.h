@@ -1,25 +1,26 @@
 
-#ifndef READ_ATOM_h
-#define READ_ATOM_h
+#ifndef TRATE_h
+#define TRATE_h
 
 /*----------------------------------------------------------------------------*/
 
 #include <stdio.h>
-#include <stdlib.h>
+#include <complex.h>
 #include <math.h>
 #include <stdbool.h>
-#include "STR.h"
 #include "CONSTANT.h"
 #include "ALLOCATION.h"
 #include "LL04.h"
-#include "ERROR.h"
-#include "READ_INPUT.h"
+#include "FCTSG.h"
 #include "WIGNER.h"
+#include "READ_ATOM.h"
+#include "READ_INPUT.h"
 
 /*----------------------------------------------------------------------------*/
 
-extern void RDATOM(char filename[], STRUCT_INPUT *Input, STRUCT_ATOM *Atom);
-
+extern int TRates(STRUCT_ATOM *Atom, STR_FCTSG *fctsg, \
+    STRUCT_INPUT *Input);
+    
 /*----------------------------------------------------------------------------*/
 
-#endif /* READ_ATOM_h */
+#endif /* TRATE_h */

@@ -6,7 +6,10 @@
     /*######################################################################
  
      revision log:
-        10 Sept. 2021.
+
+      30 Otc. 2024
+          --- update: moved subroutine array2coeff and coeff2array to 
+                      COEFF.c
  
     ######################################################################*/
 
@@ -198,9 +201,11 @@ extern double LOSS_FUNCTION(STRUCT_OBSERVATION *Obs, STRUCT_OUT *Output, \
         return the chisq.
     ######################################################################*/
     
-    int i, j;
+
     double Chisq = 0;
-    
+    /*
+    int i, j;
+        
     for(i=0; i<Obs->npixels; i++){
       for(j=0; j<Obs->num; j++){
         Chisq += (Output->syntot[i][j]-Obs->Data[i][j]) \
@@ -208,86 +213,8 @@ extern double LOSS_FUNCTION(STRUCT_OBSERVATION *Obs, STRUCT_OUT *Output, \
             *Output->norm[i]*Input->weight[j]*Input->weight[j];
       }
     }
-    
+    */
     return Chisq*1e14;
-}
-
-/*----------------------------------------------------------------------------*/
-
-extern void array2coeff(double *qk,  STRUCT_INPUT *Input){
-  
-    /*######################################################################
-      Purpose:
-        convert qk array to SFB coefficients structure.
-      Record of revisions:
-        10 Sept. 2021.
-      Input parameters:
-        qk, a structure saved input configuration.
-        Input, a structure saved the inversion information.
-      Output parameters:
-        Input, a structure saved the inversion information.
-    ######################################################################*/
-  
-    int in, il, im, ipara;
-    int ii = 0;
-
-    for(ipara=0; ipara<4; ipara++){
-      if(!Input->Para[ipara].invt) continue;
-      for(in=1; in<=Input->Para[ipara].N; in++){
-        for(il=0; il<=Input->Para[ipara].L; il++){
-          for(im=0; im<=il; im++){
-            if(im==0){
-              Input->Para[ipara].Coeff[in][il][im] = qk[ii];
-              ii++;
-            }else{
-              Input->Para[ipara].Coeff[in][il][im] = qk[ii]+qk[ii+1]*I;
-              ii+=2;
-            }
-          }
-        }
-      }
-    }
-    
-    return;
-}
-
-/*----------------------------------------------------------------------------*/
-
-extern void coeff2array(double *qk,  STRUCT_INPUT *Input){
-  
-    /*######################################################################
-      Purpose:
-        convert SFB coefficients structure to qk array.
-      Record of revisions:
-        10 Sept. 2021.
-      Input parameters:
-        Input, a structure saved the inversion information.
-      Output parameters:
-        qk, a structure saved input configuration.
-    ######################################################################*/
-  
-    int in, il, im, ipara;
-    int ii = 0;
-    
-    for(ipara=0; ipara<4; ipara++){
-      if(!Input->Para[ipara].invt) continue;
-      for(in=1; in<=Input->Para[ipara].N; in++){
-        for(il=0; il<=Input->Para[ipara].L; il++){
-          for(im=0; im<=il; im++){
-            if(im==0){
-              qk[ii] = creal(Input->Para[ipara].Coeff[in][il][im]);
-              ii++;
-            }else{
-              qk[ii] = creal(Input->Para[ipara].Coeff[in][il][im]);
-              qk[ii+1] = cimag(Input->Para[ipara].Coeff[in][il][im]);
-              ii+=2;
-            }
-          }
-        }
-      }
-    }
-    
-    return;
 }
 
 /*----------------------------------------------------------------------------*/

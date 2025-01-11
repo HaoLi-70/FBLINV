@@ -6,71 +6,20 @@
     /*######################################################################
     
       revision log:
-        10 Sept. 2021.
+
+        19 Nov. 2024
+          --- update: output the nx for each pixel.
+
+        30 Otc. 2024
+          --- bugfix: fix a typo in multi-direction synthesis .
+          --- update: moved subroutine FREE_GRIDS and FREE_OUTPUT to 
+                      FREE.c
+                      moved subroutine Randomseeds to MPI_CTRL.c
+
+        19 Sep. 2024
+          --- update: synthesis for multi LOS.
     
     ######################################################################*/
-
-/*----------------------------------------------------------------------------*/
-
-extern int Randomseeds(STRUCT_MPI *Mpi){
-
-    /*######################################################################
-      Purpose:
-        initialize the mpi structure.
-      Record of revisions:
-        30 Otc., 2022
-      Input parameters:
-        Mpi, a structure save the information for mpi.
-      Output parameters:
-        Mpi, the structure save the information for mpi.
-    ######################################################################*/
-    
-    int i;
-
-    Mpi->idum = (long *)malloc(sizeof(long)*Mpi->nprocs);
-
-    if (Mpi->rank == 0){
-      srand((unsigned int)time(NULL));
-      srand(rand());  
-      for(i=0; i<Mpi->nprocs; i++){  
-        Mpi->idum[i] = -rand();
-      }
-    }
-    MPI_Bcast(Mpi->idum, Mpi->nprocs, MPI_LONG, 0, MPI_COMM_WORLD);
-
-    return 0;
-}
-
-/*----------------------------------------------------------------------------*/
-
-extern double Interpol_Linear3D(double ***Data, int i, int j, int k, \
-    double ir, double jr, double kr){
-  
-    /*######################################################################
-      Purpose:
-        3D linear Interpolation.
-      Record of revisions:
-        26 Sep. 2019.
-      Input parameters:
-        Data[][][], 3D data cube.
-        i, j, k, the grid point close the interpolation position.
-        ir, jr, kr, the ratios.
-      Return:
-        return the interpolated value.
-    ######################################################################*/
-  
-    double tmp1, tmp2, tmp3, tmp4;
-    double irp = 1-ir;
-    
-    tmp1 = irp*Data[i][j][k]+ir*Data[i+1][j][k];
-    tmp2 = irp*Data[i][j+1][k]+ir*Data[i+1][j+1][k];
-    tmp3 = (1-jr)*tmp1+jr*tmp2;
-    tmp1 = irp*Data[i][j][k+1]+ir*Data[i+1][j][k+1];
-    tmp2 = irp*Data[i][j+1][k+1]+ir*Data[i+1][j+1][k+1];
-    tmp4 = (1-jr)*tmp1+jr*tmp2;
-    
-    return (1-kr)*tmp3+kr*tmp4;
-}
 
 /*----------------------------------------------------------------------------*/
 
@@ -81,7 +30,7 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
       Purpose:
         initialize the inversion or synthesis.
       Record of revisions:
-        13 Aug. 2023.
+        19 Nov 2024.
       Input parameters:
         Input, a structure with the inputs.
         Atom, a structure with the atoms.
@@ -93,7 +42,7 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
         Mpi, a structure with the Mpi information.
     ######################################################################*/
 
-    int i, k, au, al, ix, iy, iz, nx = 0, itmp;
+    int K, au, al, ix, iy, iz, nx = 0, itmp, ilos, iThom;
     int iatom, itrans, igrid, ipixel, ipara, indx, ipspec, ispec, ilambda;
     int Si, q1, q, in, il, im, K_ln, costheta;
     double dtmp1, dtmp2, X, Y, Z, rsq0, rsq1, PAB[2], Jkq[2], \
@@ -104,9 +53,11 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
 
     Dkmn[2] = (complex double **)MATRIX(-2, 2, -2, 2, enum_cplx, false);
 
-    complex double ***T_KQ = (complex double ***)TENSOR_RHO_CPLX(2, 2, false);
+    complex double ***T_KQ = (complex double ***)TENSOR_RHO_CPLX(2, 2, \
+        false);
 
     STRUCT_GRID *pgrid;
+    STRUCT_LOS *plos;
 
     fctsg->nmax = lround(8*Input->rJmax)> \
         4*lround(Input->rJmax+Input->rLmax+Input->rSmax)? \
@@ -199,8 +150,8 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
 
         Atom[iatom].TR[itrans].w[0] = 1;
         dtmp1 = fctsg->sg[(int)(1+Ju+Jl)]*sqrt(3.*Atom[iatom].LV[au].deg);
-        for(k=1; k<3; k++){
-          Atom[iatom].TR[itrans].w[k] = dtmp1*WIGNER_6J(1.0, 1.0, k, \
+        for(K=1; K<3; K++){
+          Atom[iatom].TR[itrans].w[K] = dtmp1*WIGNER_6J(1.0, 1.0, K, \
               Ju, Ju, Jl,fctsg);
         }
 
@@ -213,6 +164,7 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
             *WIGNER_6J(1.,1.,1.,Jl,Ju,Ju,fctsg) \
             +Atom[iatom].LV[al].g*dtmp2 \
             *WIGNER_9J(Jl,Ju,1.,Jl,Ju,1.,1.,2.,1.,fctsg));
+
       }
     }
 
@@ -228,11 +180,18 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
         for(iz=0; iz<Input->nz; iz++){
           Z = Input->FOV[1][0]+iz*Input->dz;
           rsq0 = Y*Y+Z*Z;
-          if(rsq0<Input->rsqmin || rsq0>Input->rsqmax) continue;
+          
+          if(rsq0<Input->rsqmin || rsq0>Input->rsqmax){ 
+            Input->nx[iy][iz] = -1;
+            continue;
+          }
           dtmp1 = sqrt(Input->rsqint-rsq0);
-          if(dtmp1<Input->dx) continue;
+          if(dtmp1<Input->dx){ 
+            Input->nx[iy][iz] = -1;
+            continue;
+          }
           nx = (int)(dtmp1/Input->dx);
-   
+          Input->nx[iy][iz] = nx;
           Syn->ngrids+=2*nx+1;
           Syn->npixels++;      
         }
@@ -280,6 +239,42 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
       ipixel = 0;
       ipspec = 0;
 
+      
+      for(iy=0; iy<Input->ny; iy++){
+        Y = Input->FOV[0][0]+iy*Input->dy;
+        if(Y>=Input->FOVSPEC[0][0]){
+          Input->FOVSPECINDX[0][0] = iy;
+          break;
+        } 
+      }
+      Input->FOVSPECINDX[0][1] = Input->ny-1;
+      for(iy=Input->FOVSPECINDX[0][0]; iy<Input->ny; iy++){
+        Y = Input->FOV[0][0]+iy*Input->dy;
+        if(Y>Input->FOVSPEC[0][1]){
+          Input->FOVSPECINDX[0][1] = iy;
+          break;
+        } 
+      }
+      Input->nys = Input->FOVSPECINDX[0][1]-Input->FOVSPECINDX[0][0]+1;
+
+
+      for(iz=0; iz<Input->nz; iz++){
+        Z = Input->FOV[1][0]+iz*Input->dz;
+        if(Z>=Input->FOVSPEC[1][0]){
+          Input->FOVSPECINDX[1][0] = iz;
+          break;
+        } 
+      }
+      Input->FOVSPECINDX[1][1] = Input->nz-1;
+      for(iz=Input->FOVSPECINDX[1][0]; iz<Input->nz; iz++){
+        Z = Input->FOV[1][0]+iz*Input->dz;
+        if(Z>Input->FOVSPEC[1][1]){
+          Input->FOVSPECINDX[1][1] = iz;
+          break;
+        } 
+      }
+      Input->nzs = Input->FOVSPECINDX[1][1]-Input->FOVSPECINDX[1][0]+1;
+
       // get the pixel, and spectrum indexes for each grid
       for(iy=0; iy<Input->ny; iy++){
         Y = Input->FOV[0][0]+iy*Input->dy;
@@ -287,12 +282,9 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
           Z = Input->FOV[1][0]+iz*Input->dz;
           rsq0 = Y*Y+Z*Z;
 
-          // count the grid  between rmin and rmax
-          if(rsq0<Input->rsqmin || rsq0>Input->rsqmax) continue;
-          dtmp1 = sqrt(Input->rsqint-rsq0);
-          if(dtmp1<Input->dx) continue;
-
-          nx = (int)(dtmp1/Input->dx);
+          // if the grid between rmin and rmax
+          nx = Input->nx[iy][iz];
+          if(nx<0) continue;
 
           for(ix=-nx;ix<=nx;ix++){
             igrid++;
@@ -317,8 +309,10 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
 
             // get the spectrum index if output the spectrum 
             if(Input->Nspec>0){
-              if(Y>=Input->FOVSPEC[0][0] && Y<=Input->FOVSPEC[0][1] \
-                  &&Z>=Input->FOVSPEC[1][0] && Z<=Input->FOVSPEC[1][1]){
+              if(iy>=Input->FOVSPECINDX[0][0] \
+                  && iy<=Input->FOVSPECINDX[0][1] \
+                  && iz>=Input->FOVSPECINDX[1][0] \
+                  && iz<=Input->FOVSPECINDX[1][1]){
                 Syn->Grids[itmp].ipspec = ipspec;
 
               }else{
@@ -335,28 +329,14 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
           }
 
           if(Input->Nspec>0){
-            if(Y>=Input->FOVSPEC[0][0] && Y<=Input->FOVSPEC[0][1] \
-                &&Z>=Input->FOVSPEC[1][0] && Z<=Input->FOVSPEC[1][1]){
+            if(iy>=Input->FOVSPECINDX[0][0] \
+                && iy<=Input->FOVSPECINDX[0][1] \
+                && iz>=Input->FOVSPECINDX[1][0] \
+                && iz<=Input->FOVSPECINDX[1][1]){
               ipspec++;  
             }
           }
           ipixel++;
-        }
-      }
-
-      Input->nys = 0;
-      for(iy=0; iy<Input->ny; iy++){
-        Y = Input->FOV[0][0]+iy*Input->dy;
-        if(Y>=Input->FOVSPEC[0][0] && Y<=Input->FOVSPEC[0][1]){
-          Input->nys++;
-        } 
-      }
-
-      Input->nzs = 0;
-      for(iz=0; iz<Input->nz; iz++){
-        Z = Input->FOV[1][0]+iz*Input->dz;
-        if(Z>=Input->FOVSPEC[1][0] && Z<=Input->FOVSPEC[1][1]){
-          Input->nzs++;
         }
       }
 
@@ -368,11 +348,14 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
       // set the grid, pixel, and spectrum numbers
       Syn->ngrids = 1;
       Syn->npixels = 1;
+      Input->nx[0][0] = 0;
+
       if(Input->Nspec>0){
         Syn->npspec = 1;
       }else{
         Syn->npspec = 0;
       }
+
 
       // only the first processor does the calculation since 1 grid
       if(Mpi->rank == 0){
@@ -422,6 +405,7 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
       // get the grid number
       if(dtmp1>=Input->dx){
         nx = (int)(dtmp1/Input->dx);
+        Input->nx[0][0] = nx;
 
         Syn->ngrids = 2*nx+1;
         Syn->npixels = 1;
@@ -507,28 +491,48 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
     // precomputing for each grid
     for(igrid=0; igrid<Mpi->ngrids; igrid++){
       pgrid = Syn->Grids+igrid;
+      
+      pgrid->los = (STRUCT_LOS *)malloc(sizeof(STRUCT_LOS)*Input->nlos);
 
-      // if output the Thomson scattering
-      if(Input->NThom > 0){
-        pgrid->Thom = (STRUCT_THOMSON_GRID *) \
-            malloc(sizeof(STRUCT_THOMSON_GRID)*Input->NThom);
-        for(i = 0; i < Input->NThom; i++){
-          Thom_Scat(pgrid->R, PAB, Input->Thom[i].u1, Input->Thom[i].u2);
-          rsq0 = pgrid->Rsq0/pgrid->R/pgrid->R;
-          pgrid->Thom[i].Kr = (1-rsq0)*PAB[0]+rsq0*PAB[1];
-          pgrid->Thom[i].Kt = PAB[0];
+      for(ilos=0;ilos<Input->nlos;ilos++){
+        plos = pgrid->los+ilos;
+
+        // if output the Thomson scattering
+        if(Input->NThom > 0){
+          plos->Thom = (STRUCT_THOMSON_GRID *) \
+              malloc(sizeof(STRUCT_THOMSON_GRID)*Input->NThom);
+        }
+
+        // if output spectral lines
+        if(Input->Nline > 0){
+        
+          // allocate lines and Jkq
+          plos->Line = (STRUCT_STOKES_GRID *) \
+              malloc(sizeof(STRUCT_STOKES_GRID)*Input->Nline);
+                  // allocate the ion fraction
+          plos->Para.Ion = (double *)malloc(sizeof(double)*Input->Natom);
+
         }
       }
 
+      // if output the Thomson scattering
+      if(Input->NThom > 0){
+        pgrid->Kr = (double *)malloc(sizeof(double)*Input->NThom);
+        pgrid->Kt = (double *)malloc(sizeof(double)*Input->NThom);
+        for(iThom=0; iThom< Input->NThom; iThom++){
+          Thom_Scat(pgrid->R, PAB, Input->Thom[iThom].u1, \
+              Input->Thom[iThom].u2);
+          rsq0 = pgrid->Rsq0/pgrid->R/pgrid->R;
+          pgrid->Kr[iThom] = (1-rsq0)*PAB[0]+rsq0*PAB[1];
+          pgrid->Kt[iThom] = PAB[0];
+        }
+      }
 
       // if output spectral lines
       if(Input->Nline > 0){
 
-        // allocate lines and Jkq
-        pgrid->Line = (STRUCT_STOKES_GRID *) \
-            malloc(sizeof(STRUCT_STOKES_GRID)*Input->Nline);
         pgrid->Jkq = (STRUCT_INCIDENT_GRID *)\
-            malloc(sizeof(STRUCT_INCIDENT_GRID)*Input->Natom);
+              malloc(sizeof(STRUCT_INCIDENT_GRID)*Input->Natom);
 
         for(iatom=0; iatom<Input->Natom; iatom++){
 
@@ -549,8 +553,8 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
                 *Atom[iatom].TR[itrans].Intens;
 
             /*
+              to do
               symmetry breaking!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-
 
 
 
@@ -564,9 +568,7 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
           }
         }
       }
-
-      // allocate the ion fraction
-      pgrid->Para.Ion = (double *)malloc(sizeof(double)*Input->Natom);
+      
       // allocate T2q
       pgrid->T2Q = (complex double **)MATRIX(0, 2, -2, 2, enum_cplx, \
           true);
@@ -589,8 +591,29 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
         costheta = cos(pgrid->Theta);
 
         // allocate the ion fraction for perterbation
-        pgrid->Para.Ionsav = (double *)malloc( \
-          sizeof(double)*Input->Natom);
+        for(ilos=0;ilos<Input->nlos;ilos++){
+
+          plos = pgrid->los+ilos;
+
+          plos->Para_unperturb = (STRUCT_PARA *) \
+              malloc(sizeof(STRUCT_PARA));
+          plos->Para_unperturb->Ion = (double *) \
+              malloc(sizeof(double)*Input->Natom);
+
+          // if output spectral lines
+          if(Input->Nline > 0){
+          
+            plos->Line_unperturb = (STRUCT_STOKES_GRID *) \
+                malloc(sizeof(STRUCT_STOKES_GRID)*Input->Nline);
+          }
+
+          // if output the Thomson scattering
+          if(Input->NThom > 0){
+            plos->Thom = (STRUCT_THOMSON_GRID *) \
+                malloc(sizeof(STRUCT_THOMSON_GRID)*Input->NThom);
+          }          
+
+        }
 
         // allocate Bessel, and Legendre functions
         pgrid->sBessel = (double **)MATRIX(1, Input->Nmax, 0, \
@@ -654,10 +677,15 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
     FREE_MATRIX(Dkmn[2], -2, -2, enum_cplx);
     FREE_TENSOR_RHO_CPLX(T_KQ);
 
+    Output->los = (STRUCT_OUTLOS *)malloc(sizeof(STRUCT_OUTLOS) \
+        *Input->nlos);
+    for(ilos=0;ilos<Input->nlos;ilos++){
+      Output->los[ilos].syn = (double **)MATRIX(0, Syn->npixels-1, 0, \
+          Input->Nstk*Input->Nline+2*Input->NThom-1, enum_dbl, false);
+    }
+    
     // allocate the images
     Output->synloc = (double **)MATRIX(0, Syn->npixels-1, 0, \
-        Input->Nstk*Input->Nline+2*Input->NThom-1, enum_dbl, false);
-    Output->syntot = (double **)MATRIX(0, Syn->npixels-1, 0, \
         Input->Nstk*Input->Nline+2*Input->NThom-1, enum_dbl, false);
 
     // allocate the spectra
@@ -669,8 +697,12 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
       Input->Nl = indx;
       Output->specloc = (double **)MATRIX(0, Syn->npspec-1, 0, \
           Input->Nl*Input->Nstk-1, enum_dbl, false);
-      Output->spectot = (double **)MATRIX(0, Syn->npspec-1, 0, \
-          Input->Nl*Input->Nstk-1, enum_dbl, false);
+
+      for(ilos=0;ilos<Input->nlos;ilos++){
+        Output->los[ilos].spec = (double **)MATRIX(0, Syn->npspec-1, 0, \
+            Input->Nl*Input->Nstk-1, enum_dbl, false);;
+      }  
+
     }else{
       Input->Nspec = 0;
       for(ispec=0; ispec<Input->Nspec; ispec++){
@@ -684,332 +716,6 @@ extern int Init(STRUCT_INPUT *Input, STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
 
     return 0;
 
-}
-
-/*----------------------------------------------------------------------------*/
-
-extern int FREE_GRIDS(STRUCT_INPUT *Input, STRUCT_SYN *Syn, \
-    STRUCT_MPI *Mpi){
-
-    /*######################################################################
-      Purpose:
-        free the memory of grids.
-      Record of revisions:
-        12 Aug. 2023
-      Input parameters:
-        Input, a structure with the input information.
-        Syn, a structure with forward synthesis.
-        Mpi, a structure with the Mpi information.
-    ######################################################################*/
-
-    int igrid, iatom;
-    STRUCT_GRID *pgrid;
-
-    for(igrid=0; igrid<Mpi->ngrids; igrid++){
-      pgrid = Syn->Grids+igrid;
-
-
-      for(iatom=0; iatom<Input->Natom; iatom++){
-        free(pgrid->Jkq[iatom].J00);
-        FREE_MATRIX(pgrid->Jkq[iatom].J2q, 0, -Input->JQmax, enum_dbl);
-
-      }
-      free(pgrid->Jkq);
-      free(pgrid->Line);
-      free(pgrid->Thom);
-      free(pgrid->Para.Ion);
-
-      FREE_MATRIX(pgrid->T2Q, 0, -2, enum_cplx);
-
-      if(Input->Mode == 0){
-        FREE_VECTOR(pgrid->Phiarray, 0, enum_cplx);
-        FREE_MATRIX(pgrid->sBessel, 1, 0, enum_dbl);
-        FREE_MATRIX_TRI(pgrid->Legendre, enum_dbl);
-        free(pgrid->Para.Ionsav);
-        if(Input->Bpotential){
-          FREE_MATRIX(pgrid->sBesselD, 1, 0, enum_dbl);
-          FREE_MATRIX_TRI(pgrid->LegendreD, enum_dbl);
-        }
-      }
-    }
-
-    free(Syn->Grids);
-
-    free(Syn);
-
-    return 0;
-}
-
-/*----------------------------------------------------------------------------*/
-
-extern void Get_Para(STRUCT_ATMO *Atmo, STRUCT_ATOM *Atom, \
-    STRUCT_SYN *Syn, STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
-  
-    /*######################################################################
-      Purpose:
-        get model parameters of a grid.
-      Record of revisions:
-        12 Aug. 2023.
-      Input parameters:
-        Atmo, a structure with the coronal model.
-        Position, the position.
-      Output parameters:
-        Para, a structure with the model paramter.
-    ######################################################################*/
-
-    // constant
-    //const double H_Density = C_H_Ratio/C_mH;
-    //const double He_Density = C_He_Ratio/C_mHe*2;
-    //const double ratio = (H_Density+He_Density)/H_Density;
-    //ratio = C_E2H
-    //fprintf(stderr,"aa = %e %e \n",ratio,C_E2H);
-
-    STRUCT_GRID *pgrid;
-    int i, igrid, ir = -1, itheta = -1, iphi = -1, iatom;
-    double Ratio_R, Ratio_Theta, Ratio_Phi;
-    double Density, lg10T, Br, Btheta, Bphi, DT;
-    double Vr, Vtheta, Vphi, V, ThetaV, PhiV;
-
-    for(igrid=0; igrid<Mpi->ngrids; igrid++){
-      pgrid = Syn->Grids+igrid;
-      if((pgrid->R<Atmo->R[0]) || \
-          (pgrid->R>Atmo->R[Atmo->nR-1])){
-
-        const char *routine_name = "Get_Para";  
-        fprintf(stderr,"r = %e %e %e \n", pgrid->R, Atmo->R[0], \
-            Atmo->R[Atmo->nR-1]);
-        Error(enum_error, routine_name, "R is out of the model range! \n");
-      }else{
-        for(i=0; i<Atmo->nR-1; i++){
-          if((pgrid->R>=Atmo->R[i]) && \
-              (pgrid->R<=Atmo->R[i+1])){
-
-            ir = i;
-            Ratio_R = (pgrid->R-Atmo->R[ir]) \
-                /(Atmo->R[ir+1]-Atmo->R[ir]);
-            break;
-          }
-        }
-      }
-
-      if(pgrid->Theta<Atmo->Theta[0]){
-        itheta = 0;
-        Ratio_Theta = 0.0;
-      }else if(pgrid->Theta>Atmo->Theta[Atmo->nTheta-1]){
-        itheta = Atmo->nTheta-2;
-        Ratio_Theta = 1.0;
-      }else{
-        for(i=0; i<Atmo->nTheta-1; i++){
-          if((pgrid->Theta>=Atmo->Theta[i]) &&\
-              (pgrid->Theta<=Atmo->Theta[i+1])){
-            itheta = i;
-            Ratio_Theta = (pgrid->Theta-Atmo->Theta[itheta])\
-                /(Atmo->Theta[itheta+1]-Atmo->Theta[itheta]);
-            break;
-          }
-        }
-      }
-
-      if((pgrid->Phi<Atmo->Phi[0])){
-        iphi = 0;
-        Ratio_Phi = 0.0;
-      }else if(pgrid->Phi >Atmo->Phi[Atmo->nPhi-1]){
-        iphi = Atmo->nPhi-2;
-        Ratio_Phi = 1.0;
-      }else{
-            
-        for(i=0; i<Atmo->nPhi-1; i++){
-          if(pgrid->Phi >= Atmo->Phi[i] && \
-              pgrid->Phi <= Atmo->Phi[i+1]){
-            iphi = i;
-            Ratio_Phi = (pgrid->Phi-Atmo->Phi[iphi]) \
-                    /(Atmo->Phi[iphi+1]-Atmo->Phi[iphi]);
-            break;
-          }
-        }
-      }
-
-      Density = Interpol_Linear3D(Atmo->rho, ir, \
-          itheta, iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-
-      switch (Atmo->rhotype){
-        case 0:
-          pgrid->Para.nH = pow(10,Density);
-          pgrid->Para.ne = pgrid->Para.nH/C_H2E;
-          break;
-
-        case 1:
-          pgrid->Para.nH = Density;
-          pgrid->Para.ne = pgrid->Para.nH/C_H2E;
-          break;
-
-        case 2:
-          pgrid->Para.ne = pow(10,Density);
-          pgrid->Para.nH = pgrid->Para.ne*C_H2E;
-          break;
-
-        case 3:
-          pgrid->Para.ne = Density;
-          pgrid->Para.nH = pgrid->Para.ne*C_H2E;
-          break;
-      
-        default:
-          break;
-      }
-
-      pgrid->Para.T = Interpol_Linear3D(Atmo->T, ir, itheta, \
-          iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-
-      lg10T = log10(pgrid->Para.T);
-
-      switch (Atmo->btype){
-        case 0:
-          Br = Interpol_Linear3D(Atmo->B1, ir, itheta, \
-              iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-          Btheta = Interpol_Linear3D(Atmo->B2, ir, \
-              itheta, iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-          Bphi = Interpol_Linear3D(Atmo->B3, ir, itheta, \
-              iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-          pgrid->Para.Mag.B = sqrt(Br*Br+Btheta*Btheta+Bphi*Bphi);
-          pgrid->Para.Mag.ThetaB = acos(Br/pgrid->Para.Mag.B);
-
-          pgrid->Para.Mag.PhiB = atan2(Bphi, Btheta);
-
-          if(pgrid->Para.Mag.PhiB<0) pgrid->Para.Mag.PhiB+=2.*C_Pi;
- 
-          break;
-
-        case 1:
-          pgrid->Para.Mag.B = \
-              Interpol_Linear3D(Atmo->B1, ir, itheta, \
-              iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-          pgrid->Para.Mag.ThetaB = \
-              Interpol_Linear3D(Atmo->B2, ir, \
-              itheta, iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-          pgrid->Para.Mag.PhiB = \
-              Interpol_Linear3D(Atmo->B3, ir, itheta, \
-              iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-          if(pgrid->Para.Mag.PhiB<0) pgrid->Para.Mag.PhiB+=2.*C_Pi;
-
-          break;
-      
-        default:
-          break;
-      }
-
-      if(Input->Nspec>0){
-
-        switch (Atmo->vtype){
-          case 0:
-            Vr = Interpol_Linear3D(Atmo->V1, ir, itheta, \
-                iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-            Vtheta = Interpol_Linear3D(Atmo->V2, ir, \
-                itheta, iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-            Vphi = Interpol_Linear3D(Atmo->V3, ir, itheta, \
-                iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-            V = sqrt(Vr*Vr+Vtheta*Vtheta+Vphi*Vphi);
-            ThetaV = acos(Vr/V);
-            PhiV = atan2(Vphi, Vtheta);
-
-            break;
-
-          case 1:
-            V = Interpol_Linear3D(Atmo->V1, ir, itheta, \
-                iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-            ThetaV = Interpol_Linear3D(Atmo->V2, ir, \
-                itheta, iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-            PhiV = Interpol_Linear3D(Atmo->V3, ir, itheta, \
-                iphi, Ratio_R, Ratio_Theta, Ratio_Phi);
-
-            break;
-
-          default:
-            break;
-        }
-
-        pgrid->Para.Bx = pgrid->Para.Mag.B*sin(pgrid->Theta \
-            +pgrid->Para.Mag.ThetaB)*cos(pgrid->Phi \
-            +pgrid->Para.Mag.PhiB);
-        pgrid->Para.Vx = V*sin(pgrid->Theta+ThetaV) \
-            *cos(pgrid->Phi+PhiV);
-//Vr, Vtheta, Vphi, V, ThetaV, PhiV;
-
-
-      }
-
-      for(iatom=0; iatom<Input->Natom; iatom++){
-        if((lg10T<Atom[iatom].Ion.frac[0][0]) || \
-            (lg10T>Atom[iatom].Ion.frac[0][Atom[iatom].Ion.NT-1])){
-
-          pgrid->Para.Ion[iatom] = 0;
-
-        }else{     
-          for(i=0; i<Atom[iatom].Ion.NT-1; i++){
-            if((lg10T>=Atom[iatom].Ion.frac[0][i]) \
-                && (lg10T<=Atom[iatom].Ion.frac[0][i+1])){
-              DT = (lg10T-Atom[iatom].Ion.frac[0][i]) \
-                  /(Atom[iatom].Ion.frac[0][i+1] \
-                  -Atom[iatom].Ion.frac[0][i]);
-              break;
-            }
-          }
-          pgrid->Para.Ion[iatom] = ((1.0-DT)*Atom[iatom].Ion.frac[1][i] \
-              +DT*Atom[iatom].Ion.frac[1][i+1])*Atom[iatom].Abund;
-        }
-      }
-    }
-    
-    return;
-}
-
-/*----------------------------------------------------------------------------*/
-
-extern int Ion_fraction(STRUCT_ATOM *Atom, STRUCT_SYN *Syn, \
-    STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
-
-    /*######################################################################
-      Purpose:
-        get ion fraction.
-      Record of revisions:
-        12 Aug. 2023.
-      Input parameters:
-        Atom, a structure with the atomic information.
-        Syn, a structure with forward synthesis.
-        Input, a structure with the input information.
-        Mpi, a structure with the Mpi information.
-      Output parameters:
-    ######################################################################*/
-
-    STRUCT_GRID *pgrid;
-    int i, igrid, iatom;
-    double lg10T, DT;
-
-    for(igrid=0; igrid<Mpi->ngrids; igrid++){
-      pgrid = Syn->Grids+igrid;
-      lg10T = log10(pgrid->Para.T);
-      for(iatom=0; iatom<Input->Natom; iatom++){
-        if((lg10T<Atom[iatom].Ion.frac[0][0]) || \
-            (lg10T>Atom[iatom].Ion.frac[0][Atom[iatom].Ion.NT-1])){
-
-          pgrid->Para.Ion[iatom] = 0;
-
-        }else{     
-          for(i=0; i<Atom[iatom].Ion.NT-1; i++){
-            if((lg10T>=Atom[iatom].Ion.frac[0][i]) \
-                && (lg10T<=Atom[iatom].Ion.frac[0][i+1])){
-              DT = (lg10T-Atom[iatom].Ion.frac[0][i]) \
-                  /(Atom[iatom].Ion.frac[0][i+1] \
-                  -Atom[iatom].Ion.frac[0][i]);
-              break;
-            }
-          }
-          pgrid->Para.Ion[iatom] = ((1.0-DT)*Atom[iatom].Ion.frac[1][i] \
-              +DT*Atom[iatom].Ion.frac[1][i+1])*Atom[iatom].Abund;
-        }
-      }
-    }
-
-    return 0; 
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1080,30 +786,3 @@ extern double Baumbach(double radius){
 
 /*----------------------------------------------------------------------------*/
 
-extern void FREE_OUTPUT(STRUCT_OUT *Output, int Mode){
-    
-    /*######################################################################
-      Purpose:
-        free the output structure.
-      Record of revisions:
-        13 Aug. 2023.
-      Input parameters:
-        Output, the output structure.
-    ######################################################################*/
-
-    if(Mode==0){
-      FREE_VECTOR(Output->norm,0,enum_dbl);
-      FREE_VECTOR(Output->R,0,enum_dbl);  
-    }
-
-    if(Mode<=3){
-      FREE_MATRIX(Output->synloc,0,0,enum_dbl);
-  //    FREE_MATRIX(Output->out,0,0,enum_dbl);
-    }
-      
-    free(Output);
-
-    return;
-}
-
-/*----------------------------------------------------------------------------*/

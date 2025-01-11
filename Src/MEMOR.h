@@ -4,7 +4,6 @@
 
 /*----------------------------------------------------------------------------*/
 
-#include <stdio.h>
 #include <stdlib.h>
 
 /*----------------------------------------------------------------------------*/
@@ -60,18 +59,19 @@ typedef struct Struct_9D{
 
 /*----------------------------------------------------------------------------*/
 
-extern int inster_6d(STR_6D *ptr, double val, int indx1, int indx2, int indx3, \
+extern int inster_6d(STR_6D *ptr, double val, int indx1, int indx2, \
+    int indx3, int indx4, int indx5, int indx6);
+
+extern int inster_9d(STR_9D *ptr, double val, int indx1, int indx2, \
+    int indx3, int indx4, int indx5, int indx6, int indx7, int indx8, \
+    int indx9);
+
+extern double *ele6d(STR_6D *ptr, int indx1, int indx2, int indx3, \
     int indx4, int indx5, int indx6);
 
-extern int inster_9d(STR_9D *ptr, double val, int indx1, int indx2, int indx3, \
+extern double *ele9d(STR_9D *ptr, int indx1, int indx2, int indx3, \
     int indx4, int indx5, int indx6, int indx7, int indx8, int indx9);
-
-extern double *ele6d(STR_6D *ptr, int indx1, int indx2, int indx3, int indx4, 
-    int indx5, int indx6);
-
-extern double *ele9d(STR_9D *ptr, int indx1, int indx2, int indx3, int indx4, 
-    int indx5, int indx6, int indx7, int indx8, int indx9);
 
 /*----------------------------------------------------------------------------*/
 
-#endif /* ERROR_h */
+#endif /* MEMOR_h */

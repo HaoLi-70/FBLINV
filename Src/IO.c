@@ -6,7 +6,15 @@
     /*######################################################################
  
       revision log:
-        8 Sept. 2021.
+
+        19 Nov. 2024
+          --- update: output the nx for each pixel.
+
+        30 Otc. 2024
+          --- update: moved subroutine FREE_COEFF to FREE.c
+
+        19 Sep. 2024
+          --- update: synthesis for multi LOS .
  
     ######################################################################*/
 
@@ -29,8 +37,10 @@ extern int READ_ZEROS(char *Filename, STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
 
     FILE *fa = fopen(Filename, "rb");
 
+    size_t nsize;
+
     char tmp[5];
-    fread(tmp,sizeof(char),4,fa);
+    nsize = fread(tmp,sizeof(char),4,fa);
     tmp[4] = '\0';
 
     if(strcmp(tmp, "zero") == 0){
@@ -42,8 +52,8 @@ extern int READ_ZEROS(char *Filename, STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
       Error(enum_error, routine_name, "not a zeros file");
     }
 
-    fread(&(Input->Lzero),sizeof(int),1,fa);
-    fread(&(Input->Nzero),sizeof(int),1,fa);
+    nsize = fread(&(Input->Lzero),sizeof(int),1,fa);
+    nsize = fread(&(Input->Nzero),sizeof(int),1,fa);
 
     if(Input->Verbose && Mpi->rank == 0){
       if(Input->BC == enum_zeros){
@@ -61,7 +71,7 @@ extern int READ_ZEROS(char *Filename, STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
     int il;
 
     for(il=0;il<=Input->Lzero;il++){
-      fread(&(Input->Zeros[il][1]),sizeof(double),Input->Nzero,fa);
+      nsize = fread(&(Input->Zeros[il][1]),sizeof(double),Input->Nzero,fa);
     }
 
     fclose(fa);
@@ -145,6 +155,7 @@ extern int READ_OBSERVATION(STRUCT_INPUT *Input, STRUCT_OBSERVATION *Obs){
     if(Input->Mode!=0) return -1;
 
     const char *routine_name = "READ_OBSERVATION";
+    size_t nsize;
 
     if(!FILE_EXIST(Input->Path_Observation)){
       fprintf(stderr, "%s \n",Input->Path_Observation);
@@ -154,7 +165,7 @@ extern int READ_OBSERVATION(STRUCT_INPUT *Input, STRUCT_OBSERVATION *Obs){
     FILE *Fa = fopen(Input->Path_Observation, "rb");
 
     char header[5];
-    fread(header,sizeof(char),4,Fa);
+    nsize = fread(header,sizeof(char),4,Fa);
     header[4] = '\0';
 
     if(strcmp(header, "syth") != 0){
@@ -164,8 +175,8 @@ extern int READ_OBSERVATION(STRUCT_INPUT *Input, STRUCT_OBSERVATION *Obs){
     int ny, nz, nline, nThom;
     double FOV[4];
 
-    fread(&ny,sizeof(int),1,Fa);
-    fread(&nz,sizeof(int),1,Fa);
+    nsize = fread(&ny,sizeof(int),1,Fa);
+    nsize = fread(&nz,sizeof(int),1,Fa);
 
     if(Input->ny!=ny||Input->nz!=nz){
       Error(enum_warning, routine_name, "update the ny and nz");
@@ -175,7 +186,7 @@ extern int READ_OBSERVATION(STRUCT_INPUT *Input, STRUCT_OBSERVATION *Obs){
       Input->nz = nz;
     }
 
-    fread(&nline,sizeof(int),1,Fa);
+    nsize = fread(&nline,sizeof(int),1,Fa);
     
     if(Input->Nline!=nline){
       fprintf(stderr,"atom nline = %d observation nline = %d \n", \
@@ -183,7 +194,7 @@ extern int READ_OBSERVATION(STRUCT_INPUT *Input, STRUCT_OBSERVATION *Obs){
       Error(enum_error, routine_name, "nline number mismatch");
     }
 
-    fread(&nThom,sizeof(int),1,Fa);
+    nsize = fread(&nThom,sizeof(int),1,Fa);
 
     if(Input->NThom!=nThom){
       fprintf(stderr,"input nThom = %d observation nThom = %d \n", \
@@ -191,7 +202,7 @@ extern int READ_OBSERVATION(STRUCT_INPUT *Input, STRUCT_OBSERVATION *Obs){
       Error(enum_error, routine_name, "nThom number mismatch");
     }
 
-    fread(FOV,sizeof(double),4,Fa);
+    nsize = fread(FOV,sizeof(double),4,Fa);
 
     if(Input->FOV[0][0]!=FOV[0]||Input->FOV[0][1]!=FOV[1] \
         ||Input->FOV[1][0]!=FOV[2]||Input->FOV[1][1]!=FOV[3]){
@@ -241,7 +252,7 @@ extern int READ_OBSERVATION(STRUCT_INPUT *Input, STRUCT_OBSERVATION *Obs){
         if(rsq0>=Input->rsqmin && rsq0<=Input->rsqmax){
           tmp = sqrt(Input->rsqint-rsq0);
           if(tmp>=Input->dx){
-            fread(Obs->Data[ipixel], sizeof(double), Obs->num, Fa);
+            nsize = fread(Obs->Data[ipixel], sizeof(double), Obs->num, Fa);
             ipixel++;
           }else{
             fseek(Fa, sizeof(double)*Obs->num, SEEK_CUR);
@@ -266,7 +277,7 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
       Purpose:
         Output the synthetic data.
       Record of revisions:
-        12 Aug. 2023.
+        19 Nov. 2024.
       Input parameters:
         Input, a structure with the input configuration.
         Output, output structure.
@@ -278,8 +289,8 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
       return -1;
     }
 
-    int iy, iz, ipixel = 0, ispec, iatom, iline, itrans, ithom;
-    double Y, Z, rsq0, dtmp;
+    int ipixel, ispec, iatom, iline, itrans, ithom, ilos;
+    double dtmp;
 
     int num = Input->Nstk*Input->Nline+2*Input->NThom;
     FILE *Fa = fopen(Filename, "wb");
@@ -296,6 +307,17 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
       fwrite(&(Input->nz),sizeof(int),1,Fa);
       fwrite(&(Input->Nstk),sizeof(int),1,Fa);
 
+      fwrite(&(Syn->ngrids),sizeof(int),1,Fa);
+      fwrite(&(Syn->npixels),sizeof(int),1,Fa);
+
+      // write the number of viewing directions
+      fwrite(&(Input->nlos),sizeof(int),1,Fa);
+
+      // write the viewing directions
+      for(ilos=0; ilos<Input->nlos; ilos++){
+        fwrite(&(Input->los[ilos]),sizeof(double),1,Fa);
+      }
+
       // write number of lines and the corresponding wavelength
       fwrite(&(Input->Nline),sizeof(int),1,Fa);
       if(Input->Nline>0){
@@ -318,43 +340,40 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
         }
       }
 
-      // write the field of view
-      fwrite(Input->FOV[0],sizeof(double),4,Fa);
+      fwrite(&Input->rsqmin, sizeof(double), 1, Fa);
+      fwrite(&Input->rsqmax, sizeof(double), 1, Fa);
+      fwrite(&Input->rsqint, sizeof(double), 1, Fa);
+      fwrite(&Input->dx, sizeof(double), 1, Fa);
 
-      for(iy=0; iy<Input->ny; iy++){
-        Y = Input->FOV[0][0]+iy*Input->dy;
-        for(iz=0; iz<Input->nz; iz++){
-          Z = Input->FOV[1][0]+iz*Input->dz;
-          rsq0 = Y*Y+Z*Z;
-          if(rsq0>=Input->rsqmin && rsq0<=Input->rsqmax){
-            dtmp = sqrt(Input->rsqint-rsq0);
-            if(dtmp>=Input->dx){
-              fwrite(Output->syntot[ipixel],sizeof(double),num,Fa);
-              ipixel++;
-            }else{
-              fwrite(zeros,sizeof(double),num,Fa);
-            }
-          }else{
-            fwrite(zeros,sizeof(double),num,Fa);
-          }
+      // write the field of view
+      fwrite(Input->FOV[0], sizeof(double), 4, Fa);
+
+      fwrite(Input->nx[0], sizeof(int), Input->ny*Input->nz, Fa);
+
+      for(ilos=0; ilos<Input->nlos; ilos++){
+        ipixel = 0;
+        for(ipixel=0; ipixel<Syn->npixels; ipixel++){
+          fwrite(Output->los[ilos].syn[ipixel],sizeof(double),num,Fa);
         }
       }
+      
+      FREE_VECTOR(zeros, 0, enum_dbl);
+
+      // write number of spectral lines
+      fwrite(&(Input->Nspec),sizeof(int),1,Fa);
 
       // write the profiles if there are
       if(Input->Nspec>0){
       //////////////////////spectrum  
         
-        FREE_VECTOR(zeros, 0, enum_dbl);
-        zeros = (double *)VECTOR(0, Input->Nl*Input->Nstk-1, enum_dbl, true);
-
-        // write number of spectral lines
-        fwrite(&(Input->Nspec),sizeof(int),1,Fa);
 
         // write the size
         fwrite(&(Input->nys),sizeof(int),1,Fa);
         fwrite(&(Input->nzs),sizeof(int),1,Fa);
+        fwrite(&(Syn->npspec),sizeof(int),1,Fa);
+
         // write the field of view
-        fwrite(Input->FOVSPEC[0],sizeof(double),4,Fa);
+        fwrite(Input->FOVSPECINDX[0],sizeof(int),4,Fa);
 
         // write wavelength
         for(ispec=0;ispec<Input->Nspec;ispec++){
@@ -363,31 +382,14 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
               Input->Spec[ispec].Nl,Fa);
         }
 
-        ipixel = 0;
-        for(iy=0; iy<Input->ny; iy++){
-          Y = Input->FOV[0][0]+iy*Input->dy;
-          for(iz=0; iz<Input->nz; iz++){
-            Z = Input->FOV[1][0]+iz*Input->dz;
-            rsq0 = Y*Y+Z*Z;
-            if(rsq0>=Input->rsqmin && rsq0<=Input->rsqmax){
-              dtmp = sqrt(Input->rsqint-rsq0);
-              if(dtmp>=Input->dx && Y>Input->FOVSPEC[0][0] \
-                   && Y<Input->FOVSPEC[0][1] && Z>Input->FOVSPEC[1][0] \
-                   && Z<Input->FOVSPEC[1][1]){
-                fwrite(Output->spectot[ipixel],sizeof(double), \
-                    Input->Nl*Input->Nstk,Fa);
-                ipixel++;
-              }else{
-                fwrite(zeros,sizeof(double),Input->Nl*Input->Nstk,Fa);
-              }
-            }else{
-              fwrite(zeros,sizeof(double),Input->Nl*Input->Nstk,Fa);
-            }
+        for(ilos=0; ilos<Input->nlos; ilos++){
+          for(ipixel=0; ipixel<Syn->npspec; ipixel++){
+            fwrite(Output->los[ilos].spec[ipixel],sizeof(double), \
+                Input->Nl*Input->Nstk,Fa);
           }
         }
       }
 
-      FREE_VECTOR(zeros, 0, enum_dbl);
     
     }else if(Input->Mode==2){
       // single grid
@@ -400,6 +402,14 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
       fwrite(&(Input->Xpos),sizeof(double),1,Fa);
       fwrite(&(Input->Nstk),sizeof(int),1,Fa);
 
+      // write the number of viewing directions
+      fwrite(&(Input->nlos),sizeof(int),1,Fa);
+
+      // write the viewing directions
+      for(ilos=0; ilos<Input->nlos; ilos++){
+        fwrite(&(Input->los[ilos]),sizeof(double),1,Fa);
+      }
+
       // write number of lines and the corresponding wavelength
       fwrite(&(Input->Nline),sizeof(int),1,Fa);
       if(Input->Nline>0){
@@ -422,7 +432,9 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
       }
 
       // write integrated polarization 
-      fwrite(Output->syntot[0],sizeof(double),num,Fa);
+      for(ilos=0; ilos<Input->nlos; ilos++){
+        fwrite(Output->los[ilos].syn[0],sizeof(double),num,Fa);
+      }
 
       // write number of spectral lines
       fwrite(&(Input->Nspec),sizeof(int),1,Fa);
@@ -437,8 +449,10 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
         }
   
         // write spectra
-        fwrite(Output->spectot[0],sizeof(double), \
-            Input->Nl*Input->Nstk*Syn->npspec,Fa);
+        for(ilos=0; ilos<Input->nlos; ilos++){
+          fwrite(Output->los[ilos].spec[0],sizeof(double), \
+              Input->Nl*Input->Nstk*Syn->npspec,Fa);
+        }
       }
 
     }else if(Input->Mode==3){
@@ -451,6 +465,15 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
       fwrite(&(Input->Zpos),sizeof(double),1,Fa);
       fwrite(&(Input->Nstk),sizeof(int),1,Fa);
 
+      // write the number of viewing directions
+      fwrite(&(Input->nlos),sizeof(int),1,Fa);
+
+      // write the viewing directions
+      for(ilos=0; ilos<Input->nlos; ilos++){
+        fwrite(&(Input->los[ilos]),sizeof(double),1,Fa);
+      }
+
+
       // write number of lines and the corresponding wavelength
       fwrite(&(Input->Nline),sizeof(int),1,Fa);
       if(Input->Nline>0){
@@ -472,8 +495,10 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
         }
       }
 
-      // write integrated polarization 
-      fwrite(Output->synloc[0],sizeof(double),num,Fa);
+      for(ilos=0; ilos<Input->nlos; ilos++){
+        // write integrated polarization 
+        fwrite(Output->los[ilos].syn[0],sizeof(double),num,Fa);
+      }
 
       // write number of spectral lines
       fwrite(&(Input->Nspec),sizeof(int),1,Fa);
@@ -487,15 +512,129 @@ extern int WRITE_SYNTHESIS(char *Filename, STRUCT_INPUT *Input, \
               Input->Spec[ispec].Nl,Fa);
         }
   
-        // write spectra
-        fwrite(Output->spectot[0],sizeof(double), \
-              Input->Nl*Input->Nstk*Syn->npspec,Fa);
+        for(ilos=0; ilos<Input->nlos; ilos++){
+          // write spectra
+          fwrite(Output->los[ilos].spec[0],sizeof(double), \
+                Input->Nl*Input->Nstk*Syn->npspec,Fa);
+        }
       }
 
     } 
     
     fclose(Fa);
     
+    return 0;
+}
+
+/*----------------------------------------------------------------------------*/
+
+extern int WRITE_PARA(STRUCT_INPUT *Input, STRUCT_SYN *Syn, \
+    STRUCT_ATOM *Atom, STRUCT_MPI *Mpi){
+  
+    /*######################################################################
+      Purpose:
+        Output the parameters.
+      Record of revisions:
+        19 Nov. 2024.
+      Input parameters:
+        Input, a structure with the input configuration.
+        Syn, a structure with forward synthesis.
+        Atmo, a structure with the coronal model.
+        Mpi, a structure with the Mpi information.
+      Return:
+        .
+    ######################################################################*/
+  
+
+    MPI_File fh;
+    MPI_File_open(MPI_COMM_WORLD, Input->Path_Para, \
+        MPI_MODE_CREATE|MPI_MODE_WRONLY, MPI_INFO_NULL, &fh);
+
+    STRUCT_GRID *pgrid;
+    STRUCT_LOS *plos;
+
+    int igrid, ilos, iatom;
+    int npar = 5+Input->Natom;
+    if(Input->Nspec>0){
+      npar += 2;
+    }
+    double h2e = C_H2E;
+
+    size_t header = sizeof(char)*4+sizeof(int)*7+sizeof(double) \
+        *(9+Input->Natom)+sizeof(int)*Input->ny*Input->nz;
+    size_t offset = Mpi->gindx[0]*(npar*sizeof(double)+sizeof(int));
+    size_t offsetlos = Syn->ngrids*(npar*sizeof(double)+sizeof(int));
+
+    if(Mpi->rank==0){
+
+      char chartmp[5] = "para";
+      MPI_File_write(fh, chartmp, 4, MPI_CHAR, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Input->ny, 1, MPI_INT, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Input->nz, 1, MPI_INT, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Input->nlos, 1, MPI_INT, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Syn->ngrids, 1, MPI_INT, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Syn->npixels, 1, MPI_INT, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Input->Natom, 1, MPI_INT, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Input->Nspec, 1, MPI_INT, MPI_STATUS_IGNORE);
+
+      MPI_File_write(fh, &Input->rsqmin, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Input->rsqmax, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
+      MPI_File_write(fh, &Input->rsqint, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
+
+      MPI_File_write(fh, &Input->dx, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
+
+      MPI_File_write(fh, Input->FOV[0], 4, MPI_DOUBLE, MPI_STATUS_IGNORE);
+
+      MPI_File_write(fh, &h2e, 1, MPI_DOUBLE, MPI_STATUS_IGNORE);
+
+      for(iatom=0; iatom<Input->Natom; iatom++){
+        MPI_File_write(fh, &(Atom[iatom].Abund), 1, MPI_DOUBLE, \
+            MPI_STATUS_IGNORE);
+      }
+
+      MPI_File_write(fh, Input->nx[0], Input->ny*Input->nz, MPI_INT, \
+          MPI_STATUS_IGNORE);
+
+    }
+ 
+    for(ilos=0; ilos<Input->nlos; ilos++){
+
+      MPI_File_seek(fh, header+offset+offsetlos*ilos, MPI_SEEK_SET);
+
+      for(igrid=0; igrid<Mpi->ngrids; igrid++){
+          
+        pgrid = Syn->Grids+igrid;
+        plos = pgrid->los+ilos;
+      
+        MPI_File_write(fh, &pgrid->ipixel, 1, \
+            MPI_INT, MPI_STATUS_IGNORE);
+
+        MPI_File_write(fh, &plos->Para.B, 1, MPI_DOUBLE, \
+            MPI_STATUS_IGNORE);
+        MPI_File_write(fh, &plos->Para.ThetaB, 1, MPI_DOUBLE, \
+            MPI_STATUS_IGNORE);
+        MPI_File_write(fh, &plos->Para.PhiB, 1, MPI_DOUBLE, \
+            MPI_STATUS_IGNORE);
+        MPI_File_write(fh, &plos->Para.T, 1, MPI_DOUBLE, \
+            MPI_STATUS_IGNORE);
+        MPI_File_write(fh, &plos->Para.ne, 1, MPI_DOUBLE, \
+            MPI_STATUS_IGNORE);
+
+        MPI_File_write(fh, plos->Para.Ion, Input->Natom, \
+            MPI_DOUBLE, MPI_STATUS_IGNORE);
+
+        if(Input->Nspec>0){
+          MPI_File_write(fh, &plos->Blos, 1, MPI_DOUBLE, \
+              MPI_STATUS_IGNORE);
+          MPI_File_write(fh, &plos->Vlos, 1, MPI_DOUBLE, \
+              MPI_STATUS_IGNORE);
+        }
+
+      }
+    }
+
+    MPI_File_close(&fh);
+
     return 0;
 }
 
@@ -528,10 +667,8 @@ extern void WRITE_COEFF(char *Filename, STRUCT_SFB_COEFF *Para, int btype, \
       }else{
         indx = 0;
       }
-//      fprintf(stderr,"aa %d %d %d \n ",ipara,indx,Para[ipara].invt);
       fwrite(&indx, sizeof(int), 1, Fa);
     }
-//      fprintf(stderr,"bb \n ");
 
     fwrite(&btype, sizeof(int), 1, Fa);
     fwrite(&rhotype, sizeof(int), 1, Fa);
@@ -586,10 +723,12 @@ extern void READ_COEFF(char *Filename, STRUCT_SFB_COEFF *Para, double *Rlim){
       Error(enum_error, "READ_COEFF", "coefficients file doesn't exist!");
     }
 
+    size_t nsize;
+
     FILE *Fa = fopen(Filename, "rb");
 
     char tmp[5];
-    fread(tmp,sizeof(char),4,Fa);
+    nsize = fread(tmp,sizeof(char),4,Fa);
     tmp[4] = '\0';
 
     if(strcmp(tmp, "sfbc") != 0){
@@ -601,19 +740,19 @@ extern void READ_COEFF(char *Filename, STRUCT_SFB_COEFF *Para, double *Rlim){
     double coeffr, coeffi;
 
     for(ipara=0;ipara<4;ipara++){
-      fread(&indx, sizeof(int), 1, Fa);
+      nsize = fread(&indx, sizeof(int), 1, Fa);
       Para[ipara].in = (indx==1);
     }
 
-    fread(&btype, sizeof(int), 1, Fa);
-    fread(&rhotype, sizeof(int), 1, Fa);
-    fread(Rlim, sizeof(double), 1, Fa);
+    nsize = fread(&btype, sizeof(int), 1, Fa);
+    nsize = fread(&rhotype, sizeof(int), 1, Fa);
+    nsize = fread(Rlim, sizeof(double), 1, Fa);
 
     for(ipara=0;ipara<4;ipara++){
       if(!Para[ipara].in) continue;
 
-      fread(&Para[ipara].N, sizeof(int), 1, Fa);
-      fread(&Para[ipara].L, sizeof(int), 1, Fa);
+      nsize = fread(&Para[ipara].N, sizeof(int), 1, Fa);
+      nsize = fread(&Para[ipara].L, sizeof(int), 1, Fa);
       Para[ipara].Coeff = (complex double ***) \
           TENSOR_RHO_CPLX(Para[ipara].N, Para[ipara].L, false);
 
@@ -621,11 +760,11 @@ extern void READ_COEFF(char *Filename, STRUCT_SFB_COEFF *Para, double *Rlim){
         for(il=0; il<=Para[ipara].L; il++){
           for(im=0; im<=il; im++){
             if(im==0){
-              fread(&coeffr, sizeof(double), 1, Fa);
+              nsize = fread(&coeffr, sizeof(double), 1, Fa);
               Para[ipara].Coeff[in][il][im] = coeffr;
             }else{
-              fread(&coeffr, sizeof(double), 1, Fa);
-              fread(&coeffi, sizeof(double), 1, Fa);
+              nsize = fread(&coeffr, sizeof(double), 1, Fa);
+              nsize = fread(&coeffi, sizeof(double), 1, Fa);
               Para[ipara].Coeff[in][il][im] = coeffr+coeffi*I;
             }
           }
@@ -639,27 +778,52 @@ extern void READ_COEFF(char *Filename, STRUCT_SFB_COEFF *Para, double *Rlim){
 
 /*----------------------------------------------------------------------------*/
 
-extern int FREE_COEFF(STRUCT_SFB_COEFF *Para){
-
+extern void WRITE_ATMO(char *Filename, STRUCT_ATMO *Atmo){
+  
     /*######################################################################
       Purpose:
-        free the coefficients.
+        write the coronal model.
       Record of revisions:
-        20 Aut. 2023.
+        16 Jan. 2024.
       Input parameters:
-        Para, structure with the coefficients.
+        Filename, path to the mode atmosphere.
+        Atmo, a structure with the coronal model.
     ######################################################################*/
 
-    int ipara;
+    FILE *fa = fopen(Filename, "wb");
 
-    for(ipara=0;ipara<4;ipara++){
-      if(!Para[ipara].invt) continue;
-      FREE_TENSOR_RHO_CPLX(Para[ipara].Coeff);
+    char tmp[5] = "fbmd";
+    fwrite(tmp, sizeof(char), 4, fa);
+
+    fwrite(&(Atmo->nR),sizeof(int),1,fa);
+    fwrite(&(Atmo->nTheta),sizeof(int),1,fa);
+    fwrite(&(Atmo->nPhi),sizeof(int),1,fa);
+
+    fwrite(Atmo->R,sizeof(double),Atmo->nR,fa);
+    fwrite(Atmo->Theta,sizeof(double),Atmo->nTheta,fa);
+    fwrite(Atmo->Phi,sizeof(double),Atmo->nPhi,fa);
+
+    int num = Atmo->nR*Atmo->nTheta*Atmo->nPhi;
+
+    fwrite(Atmo->T[0][0],sizeof(double),num,fa);
+
+    fwrite(&(Atmo->rhotype),sizeof(int),1,fa);
+    fwrite(Atmo->rho[0][0],sizeof(double),num,fa);
+
+    fwrite(&(Atmo->btype),sizeof(int),1,fa);
+    fwrite(Atmo->B1[0][0],sizeof(double),num,fa);
+    fwrite(Atmo->B2[0][0],sizeof(double),num,fa);
+    fwrite(Atmo->B3[0][0],sizeof(double),num,fa);
+
+    if(Atmo->vtype>=0){
+      fwrite(&(Atmo->vtype),sizeof(int),1,fa);
+      fwrite(Atmo->V1[0][0],sizeof(double),num,fa);
+      fwrite(Atmo->V2[0][0],sizeof(double),num,fa);
+      fwrite(Atmo->V3[0][0],sizeof(double),num,fa);
     }
 
-    free(Para);
-
-    return 0;
+    fclose(fa);
+    return;
 }
 
 /*----------------------------------------------------------------------------*/

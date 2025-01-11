@@ -6,7 +6,19 @@
     /*######################################################################
     
       revision log:
-      10 Sept. 2021.
+
+        19 Nov. 2024
+          --- update: add **nx to the input structure.
+                      remove the parameter file if exist.
+
+        30 Otc. 2024
+          --- update: A keywords to output the model parameters at each 
+                      grids.
+                      moved subroutine FREE_INPUT to FREE.c
+
+        27 Dec. 2024
+          --- update: Capable of inputting the magnetic field for the 
+                      grid mode.  
     
     ######################################################################*/
 
@@ -19,7 +31,7 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
       Purpose:
         convert the keywords to inversion configuration.
       Record of revisions:
-        10 Sept. 2021.
+        27 Dec. 2024.
       Input parameters:
         Keywords, a structure saved input configuration.
       Output parameters:
@@ -37,7 +49,7 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     indx = 0;
     Input->Verbose = atoi(Keywords[indx].line);
     if(Input->Verbose>=1 && Mpi->rank == 0){
-      fprintf(stderr, "\n verbose level : %d \n", Input->Verbose);
+      fprintf(stderr, "\n verbose level : %d ", Input->Verbose);
     }
     
     indx = 1;
@@ -61,17 +73,17 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
 
     if(Input->Verbose >= 1 && Mpi->rank == 0){
       if(Input->Mode == 0){
-        fprintf(stderr, "\n mode : inversion \n");
+        fprintf(stderr, "\n mode : inversion ");
       }else if(Input->Mode == 1){
-        fprintf(stderr, "\n mode : forward synthesis \n");
+        fprintf(stderr, "\n mode : forward synthesis ");
       }else if(Input->Mode == 2){
-        fprintf(stderr, "\n mode : single grid calculation  \n");
+        fprintf(stderr, "\n mode : single grid calculation ");
       }else if(Input->Mode == 3){
-        fprintf(stderr, "\n mode : single pixel calculation \n");
+        fprintf(stderr, "\n mode : single pixel calculation ");
       }else if(Input->Mode == 4){
-        fprintf(stderr, "\n mode : decomposition \n");
+        fprintf(stderr, "\n mode : decomposition ");
       }else if(Input->Mode == 5){
-        fprintf(stderr, "\n mode : reconstruction \n");
+        fprintf(stderr, "\n mode : reconstruction ");
       }
     }
 
@@ -83,17 +95,29 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
       String_Copy(Input->Path_Atom[itmp], Path_tmp[itmp], \
           Max_Line_Length-1, true);
       if(Input->Verbose >= 1 && Mpi->rank == 0){
-        fprintf(stderr, "\n Path to the Atom : %d %s\n", itmp, \
+        fprintf(stderr, "\n Path to the Atom : %d %s", itmp, \
             Input->Path_Atom[itmp]);
+      }
+      if(!FILE_EXIST(Input->Path_Atom[itmp])){
+        if(Mpi->rank == 0){
+          Error(enum_error, "routine_name", 
+            "atomic file doesn't exist!");
+        }
+        ABORT();
       }
     }
     FREE_MATRIX(Path_tmp,0,0,enum_char);
 
     indx = 3;
-    String_Copy(Input->Path_Zero, Keywords[indx].line, \
-        strlen(Keywords[indx].line), true);
-    if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n path_zero : %s \n", Input->Path_Zero);
+    if(Input->Mode == 0||Input->Mode == 4||Input->Mode == 5){
+      String_Copy(Input->Path_Zero, Keywords[indx].line, \
+          strlen(Keywords[indx].line), true);
+      if(!FILE_EXIST(Input->Path_Atom[itmp])){
+        Error(enum_error, "routine_name", "zeros file doesn't exist!");
+      }
+      if(Input->Verbose >= 1 && Mpi->rank == 0){
+        fprintf(stderr, "\n path_zero : %s ", Input->Path_Zero);
+      }
     }
 
     indx = 4;
@@ -101,7 +125,7 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
         &(Input->Para[0].N), &(Input->Para[1].N), \
         &(Input->Para[2].N), &(Input->Para[3].N));
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Bessel_function_N : %d %d %d %d\n", \
+      fprintf(stderr, "\n Bessel_function_N : %d %d %d %d", \
           Input->Para[0].N, Input->Para[1].N, \
           Input->Para[2].N, Input->Para[3].N);
     }
@@ -111,7 +135,7 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
         &(Input->Para[0].L), &(Input->Para[1].L), \
         &(Input->Para[2].L), &(Input->Para[3].L));
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n harmonic_L : %d %d %d %d\n", \
+      fprintf(stderr, "\n harmonic_L : %d %d %d %d", \
           Input->Para[0].L, Input->Para[1].L, \
           Input->Para[2].L, Input->Para[3].L);
     }
@@ -121,7 +145,7 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
         &(Input->Para[0].sparsity), &(Input->Para[1].sparsity), \
         &(Input->Para[2].sparsity), &(Input->Para[3].sparsity));
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Sparsity : %f %f %f %f\n", \
+      fprintf(stderr, "\n Sparsity : %f %f %f %f", \
           Input->Para[0].sparsity, Input->Para[1].sparsity, \
           Input->Para[2].sparsity, Input->Para[3].sparsity);
     }
@@ -135,9 +159,9 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     }
     if(Input->Verbose >= 1 && Mpi->rank == 0){
       if(Input->Saturated){
-        fprintf(stderr, "\n Redue the SEEs : YES \n");
+        fprintf(stderr, "\n Redue the SEEs : YES ");
       }else{
-        fprintf(stderr, "\n Redue the SEEs : No \n");
+        fprintf(stderr, "\n Redue the SEEs : No ");
       }
     }
     
@@ -169,14 +193,14 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     Input->rmin = atof(Keywords[indx].line);
     Input->rsqmin = Input->rmin*Input->rmin;
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Min of the radius : %e Rs \n", Input->rmin);
+      fprintf(stderr, "\n Min of the radius : %e Rs ", Input->rmin);
     }
     
     indx = 10;
     Input->rmax = atof(Keywords[indx].line);
     Input->rsqmax = Input->rmax*Input->rmax;
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Max of the radius : %e Rs \n", Input->rmax);
+      fprintf(stderr, "\n Max of the radius : %e Rs ", Input->rmax);
     }
         
     indx = 11;
@@ -185,10 +209,10 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
         &Input->FOV[0][1], &Input->FOV[1][0], &Input->FOV[1][1]);
 
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n field of view \n");
-      fprintf(stderr, "\n X : %e Rs %e Rs \n", Input->FOV[0][0], \
+      fprintf(stderr, "\n field of view ");
+      fprintf(stderr, "\n X : %e Rs %e Rs ", Input->FOV[0][0], \
           Input->FOV[0][1]);
-      fprintf(stderr, "\n Z : %e Rs %e Rs \n", Input->FOV[1][0], \
+      fprintf(stderr, "\n Z : %e Rs %e Rs ", Input->FOV[1][0], \
           Input->FOV[1][1]);
     }
     
@@ -196,61 +220,66 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     Input->ny = atoi(Keywords[indx].line);
     Input->dy = (Input->FOV[0][1]-Input->FOV[0][0])/(Input->ny-1);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Y size: %d \n", Input->ny);
+      fprintf(stderr, "\n Y size: %d ", Input->ny);
     }
 
     indx = 13;
     Input->nz = atoi(Keywords[indx].line);
     Input->dz = (Input->FOV[1][1]-Input->FOV[1][0])/(Input->nz-1);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Z size: %d \n", Input->nz);
+      fprintf(stderr, "\n Z size: %d ", Input->nz);
     }
     
     indx = 14;
     Input->dx = atof(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n delta X : %f \n", Input->dx);
+      fprintf(stderr, "\n delta X : %f ", Input->dx);
     }
 
     indx = 15;
     Input->Kmax = atoi(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Kmax : %d  \n", Input->Kmax);
+      fprintf(stderr, "\n Kmax : %d  ", Input->Kmax);
     }
 
     indx = 16;
     Input->Kdelta = atoi(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Kdelta : %d  \n", Input->Kdelta);
+      fprintf(stderr, "\n Kdelta : %d  ", Input->Kdelta);
     }
 
     /////////////////////////////
     indx = 17;
-    String_Copy(Input->Path_Observation, Keywords[indx].line, \
-        strlen(Keywords[indx].line), true);
-    if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Observation file : %s \n", \
-          Input->Path_Observation);
+    if(Input->Mode == 0){
+      String_Copy(Input->Path_Observation, Keywords[indx].line, \
+          strlen(Keywords[indx].line), true);
+      if(!FILE_EXIST(Input->Path_Observation)){
+        Error(enum_error, "routine_name", "zeros file doesn't exist!");
+      }
+      if(Input->Verbose >= 1 && Mpi->rank == 0){
+        fprintf(stderr, "\n Observation file : %s ", \
+            Input->Path_Observation);
+      }
     }
     
     indx = 18;
     String_Copy(Input->Path_Output, Keywords[indx].line, \
         strlen(Keywords[indx].line), true);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Output file : %s \n",Input->Path_Output);
+      fprintf(stderr, "\n Output file : %s ",Input->Path_Output);
     }
     
     indx = 19;
     String_Copy(Input->Path_coeff, Keywords[indx].line, \
         strlen(Keywords[indx].line), true);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n SFB Coefficients : %s \n", Input->Path_coeff);
+      fprintf(stderr, "\n SFB Coefficients : %s ", Input->Path_coeff);
     }
     
     indx = 20;
     Input->step_size = atof(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n step size: %e \n", Input->step_size);
+      fprintf(stderr, "\n step size: %e ", Input->step_size);
     }
     
     
@@ -272,13 +301,13 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     String_Copy(Input->Path_Atmo, Keywords[indx].line, \
         strlen(Keywords[indx].line), true);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n atmosphere model : %s \n", Input->Path_Atmo);
+      fprintf(stderr, "\n atmosphere model : %s ", Input->Path_Atmo);
     }
 
     indx = 23;
     Input->Per = atof(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n dri - per : %f  \n", Input->Per);
+      fprintf(stderr, "\n dri - per : %f  ", Input->Per);
     }
 
     indx = 24;
@@ -286,7 +315,7 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
         &(Input->perturb[0]), &(Input->perturb[1]), \
         &(Input->perturb[2]), &(Input->perturb[3]));
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n perturbation : %e %e %e %e \n", \
+      fprintf(stderr, "\n perturbation : %e %e %e %e ", \
           (Input->perturb[0]), (Input->perturb[1]), \
           (Input->perturb[2]), (Input->perturb[3]));
     }
@@ -300,9 +329,9 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     }
     if(Input->Verbose >= 1 && Mpi->rank == 0){
       if(Input->symmetry){
-        fprintf(stderr, "\n axial symmetry : YES \n");
+        fprintf(stderr, "\n axial symmetry : YES ");
       }else{
-        fprintf(stderr, "\n axial symmetry : No \n");
+        fprintf(stderr, "\n axial symmetry : No ");
       }
     }
 
@@ -313,10 +342,10 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
           &(Input->Xpos));
       if(Input->Verbose >= 1 && Mpi->rank == 0){
         if(nread == 3){
-          fprintf(stderr, "\n Y = %f Z = %f X = %f \n", \
+          fprintf(stderr, "\n Y = %f Z = %f X = %f ", \
               Input->Ypos, Input->Zpos, Input->Xpos);
         }else{
-          fprintf(stderr, "\n Y = %f Z = %f \n", \
+          fprintf(stderr, "\n Y = %f Z = %f ", \
               Input->Ypos, Input->Zpos);
         }
       }
@@ -336,9 +365,9 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
       }
       if(Input->Verbose >= 1 && Mpi->rank == 0){
         if(Input->Para[itmp].invt){
-          fprintf(stderr," inv parameter %d: Yes \n",itmp);
+          fprintf(stderr,"\n inv parameter %d: Yes ",itmp);
         }else{
-          fprintf(stderr," inv parameter %d: No \n",itmp);
+          fprintf(stderr,"\n inv parameter %d: No ",itmp);
         }
       }
     }
@@ -346,19 +375,19 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     indx = 28;
     Input->inner_flag = atoi(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Inner : %d  \n", Input->inner_flag);
+      fprintf(stderr, "\n Inner : %d  ", Input->inner_flag);
     }
 
     indx = 29;
     Input->Ncut = atoi(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n N cut : %d  \n", Input->Ncut);
+      fprintf(stderr, "\n N cut : %d  ", Input->Ncut);
     }
 
     indx = 30;
     Input->Lcut = atoi(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n K cut : %d  \n", Input->Lcut);
+      fprintf(stderr, "\n K cut : %d  ", Input->Lcut);
     }
 
     indx = 31;
@@ -370,16 +399,16 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     }
     if(Input->Verbose >= 1 && Mpi->rank == 0){
       if(Input->Bpotential){
-        fprintf(stderr, "\n Vector Potential : YES \n");
+        fprintf(stderr, "\n Vector Potential : YES ");
       }else{
-        fprintf(stderr, "\n Vector Potential : No \n");
+        fprintf(stderr, "\n Vector Potential : No ");
       }
     }
 
     indx = 32;
     Input->Niter = atoi(Keywords[indx].line);
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Niter : %d  \n", Input->Niter);
+      fprintf(stderr, "\n Niter : %d  ", Input->Niter);
     }
 
     indx = 33;
@@ -402,10 +431,10 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
       Input->FOVSPEC[1][1]=Input->FOV[1][1];
     }
     if(Input->Verbose >= 1 && Mpi->rank == 0){
-      fprintf(stderr, "\n Spectrum region \n");
-      fprintf(stderr, "\n X : %e Rs %e Rs \n", Input->FOVSPEC[0][0], \
+      fprintf(stderr, "\n Spectrum region ");
+      fprintf(stderr, "\n X : %e Rs %e Rs ", Input->FOVSPEC[0][0], \
           Input->FOVSPEC[0][1]);
-      fprintf(stderr, "\n Z : %e Rs %e Rs \n", Input->FOVSPEC[1][0], \
+      fprintf(stderr, "\n Z : %e Rs %e Rs ", Input->FOVSPEC[1][0], \
           Input->FOVSPEC[1][1]);
     }
 
@@ -429,7 +458,7 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
               spe_tmp[itmp].range[0];
         }
         if(Input->Verbose >= 1 && Mpi->rank == 0){
-          fprintf(stderr, "\n spectrum : %d range: %e %e, grids %d\n", \
+          fprintf(stderr, "\n spectrum : %d range: %e %e, grids %d", \
               itmp+1, Input->Spec[itmp].range[0], \
               Input->Spec[itmp].range[1], \
               Input->Spec[itmp].Nl);
@@ -450,9 +479,9 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     }
     if(Input->Verbose >= 1 && Mpi->rank == 0){
       if(Input->OutputV){
-        fprintf(stderr, "\n Output Stokes V image : Yes \n");
+        fprintf(stderr, "\n Output Stokes V image : Yes ");
       }else{
-        fprintf(stderr, "\n Output Stokes V image : No \n");
+        fprintf(stderr, "\n Output Stokes V image : No ");
       }
     }
 
@@ -462,11 +491,69 @@ extern int Keywords_Conversion(STRUCT_KEYS Keywords[], \
     if(Input->Verbose >= 1 && Mpi->rank == 0){
       if(Input->rint<Input->rmax){
         Input->rint = Input->rmax;
-        fprintf(stderr, "\n rIntegration is set to rmax \n");
+        fprintf(stderr, "\n rIntegration is set to rmax ");
       }
      
-      fprintf(stderr, "\n Max radius for integration : %e Rs \n", \
+      fprintf(stderr, "\n Max radius for integration : %e Rs ", \
           Input->rint); 
+    }
+
+    indx = 37;
+    Input->nlos = String_elements(Keywords[indx].line);
+    Input->los = (double *)malloc(sizeof(double)*Input->nlos);
+    for(itmp=0;itmp<Input->nlos;itmp++){
+      String_Split(parameter, Keywords[indx].line);
+      Input->los[itmp] = atof(parameter);
+      Input->los[itmp] *= (C_Pi/180.);
+    }
+    if(Input->Verbose >= 1 && Mpi->rank == 0){
+      fprintf(stderr, "\n viewing directions : ");
+      for(itmp=0;itmp<Input->nlos;itmp++){
+        fprintf(stderr, " %f ", Input->los[itmp]/C_Pi*180.); 
+        
+      }
+    }
+
+    indx = 38;
+    String_to_Upper(Keywords[indx].line);
+    if(strcmp(Keywords[indx].line, "YES") == 0){
+      Input->OutputPara = true;
+    }else{
+      Input->OutputPara = false;
+    }
+    if(Input->Verbose >= 1 && Mpi->rank == 0){
+      if(Input->OutputPara){
+        fprintf(stderr, "\n Output model parameters : YES ");
+      }else{
+        fprintf(stderr, "\n Output model parameters : No ");
+      }
+    }
+
+    indx = 39;
+    String_Copy(Input->Path_Para, Keywords[indx].line, \
+        strlen(Keywords[indx].line), true);
+    if(Input->Verbose >= 1 && Mpi->rank == 0){
+      fprintf(stderr, "\n path to model parameter : %s ", 
+          Input->Path_Para);
+    }
+
+    if(Input->Mode == 2){
+      indx = 40;
+      nread = sscanf(Keywords[indx].line,"%lf, %lf, %lf", \
+          &(Input->Bvec[0]), &(Input->Bvec[1]), \
+          &(Input->Bvec[2]));
+      if(Input->Verbose >= 1 && Mpi->rank == 0){
+        if(nread == 3){
+          Input->Binput = true;
+          Input->Bvec[1] *= 180./C_Pi; 
+          Input->Bvec[2] *= 180./C_Pi; 
+          fprintf(stderr, "The input magnetic field: %f, %f, %f ", \
+              Input->Bvec[0], Input->Bvec[1], \
+              Input->Bvec[2]);
+        }else{
+          Input->Binput = false;
+        }
+      }
     }
 
     if(Mpi->rank == 0){
@@ -485,7 +572,7 @@ extern int RDINPUT(char Filename[], STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
       Purpose:
         Read the input file for the forbidden line calculation.
       Record of revisions:
-        10 Sept. 2021.
+        27 Dec. 2024.
       Input parameters:
         Filename[], the input file.
       Output parameters:
@@ -499,7 +586,7 @@ extern int RDINPUT(char Filename[], STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
     
     FILE *fa = fopen(Filename, "r");
         
-    int Num_Keywords = 29;
+    int Num_Keywords = 41;
 
     STRUCT_KEYS Keywords[] ={
       {"verbose", "1", false, false},  //0
@@ -538,7 +625,11 @@ extern int RDINPUT(char Filename[], STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
       {"FOVSPEC", "1.0, -1.0, 1.0, -1.0", false, false}, //33
       {"SPEC", "", false, false}, //34
       {"OutputV", "No", false, false}, //35
-      {"rIntegration", "3.0", false, false} //36
+      {"rIntegration", "3.0", false, false}, //36
+      {"LOS", "0.0", false, false}, //37
+      {"OutputPara", "No", false, false}, //38
+      {"Parapath", "./para.bin", false, true}, //39
+      {"Bvec", "", false, false} //40
     };
     Num_Keywords = sizeof(Keywords)/sizeof(STRUCT_KEYS);
     
@@ -578,7 +669,7 @@ extern int RDINPUT(char Filename[], STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
               &&Input->Spec[Input->Nspec].range[0] \
               !=Input->Spec[Input->Nspec].range[1]) Input->Nspec++;
           Keywords[34].Set = true;
-
+          neglect = false;
         }else{
           for (itmp=0; itmp<Num_Keywords; itmp++){
             if(strcmp(key,Keywords[itmp].keyword)==0){
@@ -647,52 +738,25 @@ extern int RDINPUT(char Filename[], STRUCT_INPUT *Input, STRUCT_MPI *Mpi){
       Input->Nstk = 3;
     }
 
+    if(Input->Mode==2||Input->Mode==3){
+      Input->ny = 1;
+      Input->nz = 1;
+    }
+
+    // if mode 0 (inversion), or mode 1 (forward)
+    if(Input->Mode<=3){
+      Input->nx = (int **)MATRIX(0, Input->ny-1, 0, \
+          Input->nz-1, enum_int, true);
+    }
+
+    if(Mpi->rank==0){
+      if(FILE_EXIST(Input->Path_Para)){
+         remove(Input->Path_Para);
+      }
+    }
+
     return 0;
 }
 
 /*----------------------------------------------------------------------------*/
 
-extern int FREE_INPUT(STRUCT_INPUT *Input){
-
-    /*######################################################################
-      Purpose:
-        free the input structure.
-      Record of revisions:
-        13 Aug. 2023.
-      Input parameters:
-        Input, a structure with the input information.
-    ######################################################################*/
-
-    int ipara;
-
-    if(Input->Mode < 4){
-
-      FREE_MATRIX(Input->Dkmn[2], -2, -2, enum_cplx);
-
-      FREE_TENSOR_RHO_CPLX(Input->Tkq);
-
-      FREE_MATRIX(Input->Path_Atom, 0, 0, enum_char);
-
-      if(Input->NThom > 0){
-        free(Input->Thom);
-      }
-    }
-
-    if(Input->Mode == 0){
-
-      FREE_MATRIX(Input->Zeros, 0, 1, enum_dbl);
-
-      for(ipara=0;ipara<4;ipara++){
-        if(Input->Para[ipara].invt){ 
-          FREE_TENSOR_RHO_CPLX(Input->Para[ipara].Coeff);
-        }
-      }
-    }
-
-    free(Input);
-    
-    return 0;
-
-}
-
-/*----------------------------------------------------------------------------*/
